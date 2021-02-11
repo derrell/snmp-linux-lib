@@ -1,2 +1,2 @@
 # snmp-linux-lib
-Dynamic MIB support for Linux networks, etc.
+Dynamic MIB support for Linux computers, etc.
