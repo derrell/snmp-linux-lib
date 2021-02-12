@@ -167,7 +167,7 @@ class SnmpLinuxLib
       .then((files) =>
         {
           return Promise.all(
-            files.map((file, i) => this.getIfEntryInfo(file, i)));
+            files.map((file, i) => this.getIfEntryInfo(file, i + 1)));
         });
   }
 
@@ -183,7 +183,10 @@ class SnmpLinuxLib
      * least from one re-initialization of the entity's network management
      * system to the next re- initialization.
      */
-    let             ifIndex             = index + 1;
+    let             ifIndex             = async function()
+    {
+      return index;
+    };
 
     /*
      * A textual string containing information about the interface. This
@@ -426,47 +429,114 @@ class SnmpLinuxLib
           fsp.readFile(`/sys/class/net/${ifName}/statistics/rx_dropped`))
         .then(v => +v.toString().trim());
     };
-/*
-    let             ifOutOctets         = getIfOutOctets();
-    let             ifOutUcastPkts      = getIfOutUcastPkts();
-    let             ifOutNUcastPkts     = getIfOutNUcastPkts();
-    let             ifOutDiscards       = getIfOutDiscards();
-    let             ifOutErrors         = getIfOutErrors();
-    let             ifOutQLen           = getIfOutQLen();
-    let             ifSpecific          = getIfSpecific();
-*/
+
+    /*
+     * The total number of octets transmitted out of the interface, including
+     * framing characters.
+     */
+    let             ifOutOctets         = async function()
+    {
+      return Promise.resolve()
+        .then(() =>
+          fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_bytes`))
+        .then(v => +v.toString().trim());
+    };
+
+    /*
+     * The total number of packets that higher-level protocols requested be
+     * transmitted to a subnetwork-unicast address, including those that were
+     * discarded or not sent.
+     */
+    let             ifOutUcastPkts       = async function()
+    {
+      return Promise.resolve()
+        .then(() =>
+          fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_packets`))
+        .then(v => +v.toString().trim());
+    };
+
+    /*
+     * The total number of packets that higher-level protocols requested be
+     * transmitted to a non- unicast (i.e., a subnetwork-broadcast or
+     * subnetwork-multicast) address, including those that were discarded or
+     * not sent.
+     */
+    let             ifOutNUcastPkts     = async function()
+    {
+      return 0;                 // TODO: Is this number available anyplace?
+    };
+
+    /*
+     * The number of outbound packets which were chosen to be discarded even
+     * though no errors had been detected to prevent their being transmitted.
+     * One possible reason for discarding such a packet could be to free up
+     * buffer space.
+     */
+    let             ifOutDiscards       = async function()
+    {
+      return Promise.resolve()
+        .then(() =>
+          fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_dropped`))
+        .then(v => +v.toString().trim());
+    };
+
+    /*
+     * The number of outbound packets that could not be transmitted because of
+     * errors.
+     */
+    let             ifOutErrors         = async function()
+    {
+      return Promise.resolve()
+        .then(() =>
+          fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_errors`))
+        .then(v => +v.toString().trim());
+    };
+
+    /*
+     * The length of the output packet queue (in packets).
+     */
+    let             ifOutQLen           = async function()
+    {
+      return Promise.resolve()
+        .then(() =>
+          fsp.readFile(`/sys/class/net/${ifName}/tx_queue_len`))
+        .then(v => +v.toString().trim());
+    };
+
+    let             ifSpecific          = async function()
+    {
+      return "0.0";
+    };
 
 
     return Promise.all(
       [
-        ifIndex,
-        ifDescr,
-        ifType,
-        ifMtu,
-        ifSpeed,
-        ifPhysAddress,
-        ifAdminStatus,
-        ifOperStatus,
-        ifLastChange,
-/*
-        ifInOctets,
-        ifInUcastPkts,
-        ifInNUcastPkts,
-        ifInDiscards,
-        ifInErrors,
-        ifInUnknownProtos,
-        ifOutOctets,
-        ifOutUcastPkts,
-        ifOutNUcastPkts,
-        ifOutDiscards,
-        ifOutErrors,
-        ifOutQLen,
-        ifSpecific
-*/
+        ifIndex(),
+        ifDescr(),
+        ifType(),
+        ifMtu(),
+        ifSpeed(),
+        ifPhysAddress(),
+        ifAdminStatus(),
+        ifOperStatus(),
+        ifLastChange(),
+        ifInOctets(),
+        ifInUcastPkts(),
+        ifInNUcastPkts(),
+        ifInDiscards(),
+        ifInErrors(),
+        ifInUnknownProtos(),
+        ifOutOctets(),
+        ifOutUcastPkts(),
+        ifOutNUcastPkts(),
+        ifOutDiscards(),
+        ifOutErrors(),
+        ifOutQLen(),
+        ifSpecific()
       ])
       .then((results) =>
         {
-          return (
+          let result =
             {
               ifIndex           : results.shift(),
               ifDescr           : results.shift(),
@@ -477,7 +547,6 @@ class SnmpLinuxLib
               ifAdminStatus     : results.shift(),
               ifOperStatus      : results.shift(),
               ifLastChange      : results.shift(),
-/*
               ifInOctets        : results.shift(),
               ifInUcastPkts     : results.shift(),
               ifInNUcastPkts    : results.shift(),
@@ -491,8 +560,9 @@ class SnmpLinuxLib
               ifOutErrors       : results.shift(),
               ifOutQLen         : results.shift(),
               ifSpecific        : results.shift()
-*/
-            });
+            };
+
+          return result;
         });
   }
 
