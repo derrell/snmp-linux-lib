@@ -15,12 +15,42 @@
  * See https://www.kernel.org/doc/html/latest/networking/statistics.html
  */
 
-let             pciIds;
+let             pciIds;          // PCI ID database parsed into a map
+let             ifIndexMap = {}; // keyed by interface name
+let             nextIfIndex = 1; // unique value in ifIndexMap
 const           fsp = require("fs").promises;
+
+/**
+ * Called each time we read the list of interface names, this function ensures
+ * that we have a constant mapping of interface to index for the duration of
+ * this library's runtime instance.
+ *
+ * @param ifNames {String[]}
+ *   Array of interface names
+ *
+ * @return {String[]}
+ *   The input parameter is returned unaltered
+ */
+function addIfIndexes(ifNames)
+{
+  // Add an entry to our interface index map, if not already there
+  ifNames.forEach(
+    (ifName) =>
+    {
+      if (! (ifName in ifIndexMap))
+      {
+        ifIndexMap[ifName] = nextIfIndex++;
+      }
+    });
+
+  return ifNames;
+}
+
 
 class SnmpLinuxLib
 {
   cache = {};
+  pciIdPath = null;
 
   constructor(
     sysDescr,
@@ -31,8 +61,8 @@ class SnmpLinuxLib
     sysServices,
     pciIdPath = "/usr/share/misc/pci.ids")
   {
-    // Do a one-time parse of the PCI ID database
-    pciIds = require("./parsePciIds")(pciIdPath);
+    // Save the path to the PCI ID database
+    this.pciIdPath = pciIdPath;
 
     // Start the clock, for sysUpTime calls
     this.cache.startTime = new Date();
@@ -44,6 +74,19 @@ class SnmpLinuxLib
     this.cache.sysName = sysName;
     this.cache.sysLocation = sysLocation;
     this.cache.sysServices = sysServices;
+  }
+
+  /**
+   * Waiting on init() to complete allows parsing the PCI ID database only
+   * once.
+   */
+  async init()
+  {
+    // If we don't yet have the PCI database parsed, do it now.
+    if (! pciIds)
+    {
+      pciIds = await require("./parsePciIds")(this.pciIdPath);
+    }
   }
 
   /*
@@ -172,7 +215,8 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => fsp.readdir("/sys/class/net"))
-      .then((files) => files.length);
+      .then((ifNames) => addIfIndexes(ifNames))
+      .then((ifNames) => ifNames.length);
   }
 
   /**
@@ -181,12 +225,20 @@ class SnmpLinuxLib
    */
   async getIfTable()
   {
+    // If we don't yet have the PCI database parsed, do it now.
+    if (! pciIds)
+    {
+      pciIds = await require("./parsePciIds")(this.pciIdPath);
+    }
+
     return Promise.resolve()
       .then(() => fsp.readdir("/sys/class/net"))
-      .then((files) =>
+      .then((ifNames) => addIfIndexes(ifNames))
+      .then((ifNames) =>
         {
           return Promise.all(
-            files.map((file, i) => this.getIfEntryInfo(file, i + 1)));
+            ifNames.map((ifName) =>
+              this.getIfEntry(ifName, ifIndexMap[ifName])));
         });
   }
 
@@ -202,9 +254,29 @@ class SnmpLinuxLib
      * least from one re-initialization of the entity's network management
      * system to the next re- initialization.
      */
-    let             ifIndex             = async function()
+    let             ifIndex             = async () =>
     {
-      return index;
+      // Have we already identified this interface index?
+      if (ifName in ifIndexMap)
+      {
+        // Yup. We can return it immediately.
+        return ifIndexMap[ifName];
+      }
+
+      // We need to enumerate all interfaces and get this one's index.
+      return Promise.resolve()
+        .then(() => fsp.readdir("/sys/class/net"))
+        .then((ifNames) => addIfIndexes(ifNames))
+        .then(() =>
+          {
+            // It'd better be there now
+            if (! (ifName in ifIndexMap))
+            {
+              throw new Error(`Interface ${ifName} does not exist`);
+            }
+
+            return ifIndexMap[ifName];
+          });
     };
 
     /*
@@ -212,13 +284,19 @@ class SnmpLinuxLib
      * string should include the name of the manufacturer, the product name
      * and the version of the hardware interface.
      */
-    let             ifDescr             = async function()
+    let             ifDescr             = async () =>
     {
       let             vendor;
       let             device;
       let             revision;
 
-      return Promise.all(
+      // If we don't yet have the PCI database parsed, do it now.
+      if (! pciIds)
+      {
+        pciIds = await require("./parsePciIds")(this.pciIdPath);
+      }
+
+      return Promise.allSettled(
         [
           fsp.readFile(`/sys/class/net/${ifName}/device/vendor`),
           fsp.readFile(`/sys/class/net/${ifName}/device/device`),
@@ -227,11 +305,37 @@ class SnmpLinuxLib
         .then(
           (results) =>
           {
-            vendor = results.shift().toString().trim();
-            device = results.shift().toString().trim();
-            revision = results.shift().toString().trim();
+            let             manufacturer;
+            let             deviceName;
+            let             getValueOrUnknown =
+                () =>
+                {
+                  const           result = results.shift();
 
-            return `Vendor: ${vendor} | Device: ${device} | Rev : ${revision}`;
+                  if (result.status == "fulfilled")
+                  {
+                    return result.value.toString().trim();
+                  }
+
+                  return "Unknown";
+                };
+
+            // Get the vendor ID, deviceID, and revision. Attempt to
+            // convert vendor ID and device ID into their respective
+            // manufacturer and device name, if that information is
+            // available to us.
+            vendor = manufacturer = getValueOrUnknown().replace("0x", "");
+            try { manufacturer = pciIds[vendor].manufacturer; } catch (e) {};
+            device = deviceName = getValueOrUnknown().replace("0x", "");
+            try { deviceName = pciIds[vendor].devices[device]; } catch (e) {};
+            revision = getValueOrUnknown();
+
+            return (
+              [
+                `Vendor: ${manufacturer}`,
+                `Device: ${deviceName}`,
+                `Rev : ${revision}`
+              ].join(" | "));
           });
     };
 
@@ -240,7 +344,7 @@ class SnmpLinuxLib
      * protocol(s) immediately `below' the network layer in the protocol
      * stack.
      */
-    let             ifType              = async function()
+    let             ifType              = async () =>
     {
       const           definedTypes =
             {
@@ -288,7 +392,7 @@ class SnmpLinuxLib
      * transmitting network datagrams, this is the size of the largest network
      * datagram that can be sent on the interface.
      */
-    let             ifMtu               = async function()
+    let             ifMtu               = async () =>
     {
       return Promise.resolve()
         .then(() => fsp.readFile(`/sys/class/net/${ifName}/mtu`))
@@ -301,7 +405,7 @@ class SnmpLinuxLib
      * accurate estimation can be made, this object should contain the nominal
      * bandwidth.
      */
-    let             ifSpeed             = async function()
+    let             ifSpeed             = async () =>
     {
       let             speed;
 
@@ -318,7 +422,7 @@ class SnmpLinuxLib
      * such an address (e.g., a serial line), this object should contain an
      * octet string of zero length.
      */
-    let             ifPhysAddress       = async function()
+    let             ifPhysAddress       = async () =>
     {
       return Promise.resolve()
         .then(() => fsp.readFile(`/sys/class/net/${ifName}/address`))
@@ -329,7 +433,7 @@ class SnmpLinuxLib
      * The desired state of the interface. The testing(3) state indicates that
      * no operational packets can be passed.
      */
-    let             ifAdminStatus       = async function()
+    let             ifAdminStatus       = async () =>
     {
       return 1;                 // 1=up 2=down 3=testing
     };
@@ -338,7 +442,7 @@ class SnmpLinuxLib
      * The current operational state of the interface. The testing(3) state
      * indicates that no operational packets can be passed.
      */
-    let             ifOperStatus        = async function()
+    let             ifOperStatus        = async () =>
     {
       return Promise.resolve()
         .then(() => fsp.readFile(`/sys/class/net/${ifName}/operstate`))
@@ -352,7 +456,7 @@ class SnmpLinuxLib
      * re- initialization of the local network management subsystem, then this
      * object contains a zero value.
      */
-    let             ifLastChange        = async function()
+    let             ifLastChange        = async () =>
     {
       return 0; // Assume interface came up before management system
     };
@@ -361,7 +465,7 @@ class SnmpLinuxLib
      * The total number of octets received on the interface, including
      * framing characters.
      */
-    let             ifInOctets          = async function()
+    let             ifInOctets          = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -373,7 +477,7 @@ class SnmpLinuxLib
      * The number of subnetwork-unicast packets delivered to a higher-layer
      * protocol.
      */
-    let             ifInUcastPkts       = async function()
+    let             ifInUcastPkts       = async () =>
     {
       return Promise.all(
         [
@@ -394,7 +498,7 @@ class SnmpLinuxLib
      * The number of non-unicast (i.e., subnetwork- broadcast or
      * subnetwork-multicast) packets delivered to a higher-layer protocol.
      */
-    let             ifInNUcastPkts      = async function()
+    let             ifInNUcastPkts      = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -408,7 +512,7 @@ class SnmpLinuxLib
      * to a higher-layer protocol. One possible reason for discarding such a
      * packet could be to free up buffer space.
      */
-    let             ifInDiscards        = async function()
+    let             ifInDiscards        = async () =>
     {
       return Promise.all(
         [
@@ -429,7 +533,7 @@ class SnmpLinuxLib
      * The number of inbound packets that contained errors preventing them
      * from being deliverable to a higher-layer protocol.
      */
-    let             ifInErrors          = async function()
+    let             ifInErrors          = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -441,7 +545,7 @@ class SnmpLinuxLib
      * The number of packets received via the interface which were discarded
      * because of an unknown or unsupported protocol.
      */
-    let             ifInUnknownProtos   = async function()
+    let             ifInUnknownProtos   = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -453,7 +557,7 @@ class SnmpLinuxLib
      * The total number of octets transmitted out of the interface, including
      * framing characters.
      */
-    let             ifOutOctets         = async function()
+    let             ifOutOctets         = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -466,7 +570,7 @@ class SnmpLinuxLib
      * transmitted to a subnetwork-unicast address, including those that were
      * discarded or not sent.
      */
-    let             ifOutUcastPkts       = async function()
+    let             ifOutUcastPkts       = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -480,7 +584,7 @@ class SnmpLinuxLib
      * subnetwork-multicast) address, including those that were discarded or
      * not sent.
      */
-    let             ifOutNUcastPkts     = async function()
+    let             ifOutNUcastPkts     = async () =>
     {
       return 0;                 // TODO: Is this number available anyplace?
     };
@@ -491,7 +595,7 @@ class SnmpLinuxLib
      * One possible reason for discarding such a packet could be to free up
      * buffer space.
      */
-    let             ifOutDiscards       = async function()
+    let             ifOutDiscards       = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -503,7 +607,7 @@ class SnmpLinuxLib
      * The number of outbound packets that could not be transmitted because of
      * errors.
      */
-    let             ifOutErrors         = async function()
+    let             ifOutErrors         = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -514,7 +618,7 @@ class SnmpLinuxLib
     /*
      * The length of the output packet queue (in packets).
      */
-    let             ifOutQLen           = async function()
+    let             ifOutQLen           = async () =>
     {
       return Promise.resolve()
         .then(() =>
@@ -522,7 +626,7 @@ class SnmpLinuxLib
         .then(v => +v.toString().trim());
     };
 
-    let             ifSpecific          = async function()
+    let             ifSpecific          = async () =>
     {
       return "0.0";
     };
