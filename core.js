@@ -46,6 +46,16 @@ class SnmpLinuxLib
     this.cache.sysServices = sysServices;
   }
 
+  /*
+   * *********************************************************************
+   * the System group
+   *
+   * Implementation of the System group is mandatory for all systems. If an
+   * agent is not configured to have a value for any of these variables, a
+   * string of length 0 is returned.
+   * *********************************************************************
+   */
+
   /**
    * A textual description of the entity. This value should include the full
    * name and version identification of the system's hardware type, software
@@ -144,6 +154,15 @@ class SnmpLinuxLib
   {
     return this.cache.sysServices;
   }
+
+
+  /*
+   * *********************************************************************
+   * the Interfaces group
+   *
+   * Implementation of the Interfaces group is mandatory for all systems.
+   * *********************************************************************
+   */
 
   /**
    * The number of network interfaces (regardless of their current state)
@@ -568,6 +587,7 @@ class SnmpLinuxLib
 
 
   /*
+   * **********************************************************************
    * the Address Translation group
    *
    * DEPRECATED AND NOT IMPLEMENTED HERE.
@@ -589,14 +609,24 @@ class SnmpLinuxLib
    * X.25 network where non-algorithmic translation to X.121 addresses is
    * required, the translation table contains the NetworkAddress to X.121
    * address equivalences.
-   *
-   *   async getAtTable() {}
-   *   async getAtEntry() {}
-   *   async getAtIfIndex() {}
-   *   async getAtPhysAddress() {}
-   *   async getAtNetAddress() {}
+   * **********************************************************************
    */
 
+  // async getAtTable() {}
+  // async getAtEntry() {}
+  // async getAtIfIndex() {}
+  // async getAtPhysAddress() {}
+  // async getAtNetAddress() {}
+
+
+
+  /*
+   * *********************************************************************
+   * the IP group
+   *
+   * Implementation of the IP group is mandatory for all systems.
+   * *********************************************************************
+   */
 
   /*
    * The indication of whether this entity is acting as an IP gateway in
@@ -1210,6 +1240,16 @@ class SnmpLinuxLib
   {
   }
 
+
+
+  /*
+   * *********************************************************************
+   * the ICMP group
+   *
+   * Implementation of the ICMP group is mandatory for all systems.
+   * *********************************************************************
+   */
+
   /*
    * The total number of ICMP messages which the entity received. Note that
    * this counter includes all those counted by icmpInErrors.
@@ -1478,6 +1518,20 @@ class SnmpLinuxLib
       .then((info) => info.Icmp.OutAddrMaskReps);
   }
 
+
+  /*
+   * *********************************************************************
+   * the TCP group
+   *
+   * Implementation of the TCP group is mandatory for all systems that
+   * implement the TCP.
+   *
+   * Note that instances of object types that represent information about a
+   * particular TCP connection are transient; they persist only as long as the
+   * connection in question.
+   * *********************************************************************
+   */
+
   /*
    * The algorithm used to determine the timeout value used for retransmitting
    * unacknowledged octets.
@@ -1711,6 +1765,16 @@ class SnmpLinuxLib
       .then((info) => info.Tcp.OutRsts);
   }
 
+
+  /*
+   * *********************************************************************
+   * the UDP group
+   *
+   * Implementation of the UDP group is mandatory for all systems which
+   * implement the UDP.
+   * *********************************************************************
+   */
+
   /*
    * The total number of UDP datagrams delivered to UDP users.
    */
@@ -1782,6 +1846,16 @@ class SnmpLinuxLib
   async getUdpLocalPort()
   {
   }
+
+
+  /*
+   * *********************************************************************
+   * the EGP group
+   *
+   * Implementation of the EGP group is mandatory for all systems which
+   * implement the EGP.
+   * **********************************************************************
+   */
 
   /*
    * The number of EGP messages received without error.
