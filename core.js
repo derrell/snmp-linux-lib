@@ -292,7 +292,7 @@ class SnmpLinuxLib
     {
       return Promise.resolve()
         .then(() => fsp.readFile(`/sys/class/net/${ifName}/mtu`))
-        .then(v => v.toString().trim());
+        .then(v => +v.toString().trim());
     };
 
     /*
@@ -307,7 +307,7 @@ class SnmpLinuxLib
 
       return Promise.resolve()
         .then(() => fsp.readFile(`/sys/class/net/${ifName}/speed`))
-        .then(v => speed = v.toString().trim())
+        .then(v => speed = +v.toString().trim())
         .catch((e) => speed = 100) // in case it's not available
         .then(() => speed);
     };
@@ -659,6 +659,9 @@ class SnmpLinuxLib
       .then(v => +v.toString().trim());
   }
 
+  /*
+   * Retrieve all information available from /proc/net/snmp
+   */
   async getNetSnmpInfo()
   {
     let             heading;
