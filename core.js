@@ -21,31 +21,67 @@ let             nextIfIndex = 1; // unique value in ifIndexMap
 const           fsp = require("fs").promises;
 
 /**
- * Called each time we read the list of interface names, this function ensures
- * that we have a constant mapping of interface to index for the duration of
- * this library's runtime instance.
- *
- * @param ifNames {String[]}
- *   Array of interface names
+ * This function ensures that we have a constant mapping of interface
+ * to index for the duration of this library's runtime instance.
  *
  * @return {String[]}
  *   The input parameter is returned unaltered
  */
-function addIfIndexes(ifNames)
+async function addIfIndexes()
 {
-  // Add an entry to our interface index map, if not already there
-  ifNames.forEach(
-    (ifName) =>
-    {
-      if (! (ifName in ifIndexMap))
+  return Promise.resolve()
+    .then(() => fsp.readdir("/sys/class/net"))
+    .then(
+      (ifNames) =>
       {
-        ifIndexMap[ifName] = nextIfIndex++;
-      }
-    });
+        // Add an entry to our interface index map, if not already there
+        ifNames.forEach(
+          (ifName) =>
+          {
+            if (! (ifName in ifIndexMap))
+            {
+              ifIndexMap[ifName] = nextIfIndex++;
+            }
+          });
 
-  return ifNames;
+        return ifNames;
+      });
 }
 
+async function getAddressInfo()
+{
+  let             ret;
+  let             iface;
+  let             byIpAddr = { IPv4 : {}, IPv6 : {} };
+  let             byHwAddr = { IPv4 : {}, IPv6 : {} };
+  let             networkInterfaces = require("os").networkInterfaces();
+
+  // For each interface...
+  for (iface in networkInterfaces)
+  {
+    // For each entry in that interface's array...
+    networkInterfaces[iface].forEach(
+      (elem) =>
+      {
+        // Add the interface name to the entry
+        elem.interface = iface;
+
+        // Add this entry to the map keyed by IP address
+        byIpAddr[elem.family][elem.address] = elem;
+
+        // Add this entry to the map keyed by HW address, excluding
+        // interface lo
+        if (iface != "lo")
+        {
+          byHwAddr[elem.family][elem.mac] = elem;
+        }
+      });
+  }
+
+  // Give 'em the three maps
+  ret = { networkInterfaces, byIpAddr, byHwAddr };
+  return ret;
+}
 
 class SnmpLinuxLib
 {
@@ -214,8 +250,7 @@ class SnmpLinuxLib
   async getIfNumber()
   {
     return Promise.resolve()
-      .then(() => fsp.readdir("/sys/class/net"))
-      .then((ifNames) => addIfIndexes(ifNames))
+      .then(() => addIfIndexes())
       .then((ifNames) => ifNames.length);
   }
 
@@ -232,8 +267,7 @@ class SnmpLinuxLib
     }
 
     return Promise.resolve()
-      .then(() => fsp.readdir("/sys/class/net"))
-      .then((ifNames) => addIfIndexes(ifNames))
+      .then(() => addIfIndexes())
       .then((ifNames) =>
         {
           return Promise.all(
@@ -265,8 +299,7 @@ class SnmpLinuxLib
 
       // We need to enumerate all interfaces and get this one's index.
       return Promise.resolve()
-        .then(() => fsp.readdir("/sys/class/net"))
-        .then((ifNames) => addIfIndexes(ifNames))
+        .then(() => addIfIndexes())
         .then(() =>
           {
             // It'd better be there now
@@ -1056,65 +1089,195 @@ class SnmpLinuxLib
       .then((info) => info.Ip.FragCreates);
   }
 
+
+  /*
+   * **********************************************************************
+   * the IP address table
+   *
+   * The IP address table contains this entity's IP addressing information.
+   * **********************************************************************
+   */
+
   /*
    * The table of addressing information relevant to this entity's IP
    * addresses.
    */
   async getIpAddrTable()
   {
+    const           addressInfo = await getAddressInfo();
+    const           byIpAddr = addressInfo.byIpAddr;
+
+    return Promise.resolve()
+      .then(
+        () =>
+        {
+          let             ipAddr;
+          let             promises = [];
+
+          // Call `getIpAddrEntry` for each IPv4 address, binding the
+          // just-retrieved addressInfo so that `getIpAddrEntry` need
+          // not re-retrieve it.
+          for (ipAddr in byIpAddr.IPv4)
+          {
+            promises.push(this.getIpAddrEntry.bind(addressInfo)(ipAddr));
+          }
+
+          return Promise.all(promises);
+        });
   }
 
   /*
    * The addressing information for one of this entity's IP addresses.
    */
-  async getIpAddrEntry()
+  async getIpAddrEntry(ipAddr)
   {
-  }
+    let             entry;
+    let             addressInfo;
 
-  /*
-   * The IP address to which this entry's addressing information pertains.
-   */
-  async getIpAdEntAddr()
-  {
-  }
+    // If we were called externally, `this` will be our class. If we
+    // were called from `getIpAddrTable`, above, `this` will be the
+    // already-ascertained address information. If the address info is
+    // already available, we save ourselves a library call for each
+    // entry.
+    if (this instanceof SnmpLinuxLib)
+    {
+      addressInfo = await getAddressInfo();
+    }
+    else
+    {
+      addressInfo = this; // already have addressInfo from getIpAddrTable
+    }
 
-  /*
-   * The index value which uniquely identifies the interface to which this
-   * entry is applicable. The interface identified by a particular value of
-   * this index is the same interface as identified by the same value of
-   * ifIndex.
-   */
-  async getIpAdEntIfIndex()
-  {
-  }
+    // Get the information about this address
+    entry = addressInfo.byIpAddr.IPv4[ipAddr];
 
-  /*
-   * The subnet mask associated with the IP address of this entry. The value
-   * of the mask is an IP address with all the network bits set to 1 and all
-   * the hosts bits set to 0.
-   */
-  async getIpAdEntNetMask()
-  {
-  }
+    /*
+     * The IP address to which this entry's addressing information pertains.
+     */
+    let             ipAdEntAddr = async () =>
+    {
+      return ipAddr;
+    };
 
-  /*
-   * The value of the least-significant bit in the IP broadcast address used
-   * for sending datagrams on the (logical) interface associated with the IP
-   * address of this entry. For example, when the Internet standard all-ones
-   * broadcast address is used, the value will be 1. This value applies to
-   * both the subnet and network broadcasts addresses used by the entity on
-   * this (logical) interface.
-   */
-  async getIpAdEntBcastAddr()
-  {
-  }
+    /*
+     * The index value which uniquely identifies the interface to which this
+     * entry is applicable. The interface identified by a particular value of
+     * this index is the same interface as identified by the same value of
+     * ifIndex.
+     */
+    let             ipAdEntIfIndex = async () =>
+    {
+      return Promise.resolve()
+        .then(() => addIfIndexes())
+        .then(() =>
+          {
+            // It'd better be there now
+            if (! (entry.interface in ifIndexMap))
+            {
+              throw new Error(`Interface ${entry.interface} does not exist`);
+            }
 
-  /*
-   * The size of the largest IP datagram which this entity can re-assemble
-   * from incoming IP fragmented datagrams received on this interface.
-   */
-  async getIpAdEntReasmMaxSize()
-  {
+            return ifIndexMap[entry.interface];
+          });
+    };
+
+    /*
+     * The subnet mask associated with the IP address of this entry. The value
+     * of the mask is an IP address with all the network bits set to 1 and all
+     * the hosts bits set to 0.
+     */
+    let             ipAdEntNetMask = async () =>
+    {
+      return entry.netmask;
+    };
+
+    /*
+     * The value of the least-significant bit in the IP broadcast address used
+     * for sending datagrams on the (logical) interface associated with the IP
+     * address of this entry. For example, when the Internet standard all-ones
+     * broadcast address is used, the value will be 1. This value applies to
+     * both the subnet and network broadcasts addresses used by the entity on
+     * this (logical) interface.
+     */
+    let             ipAdEntBcastAddr = async () =>
+    {
+      let             i;
+      let             octet;
+      let             bits = [];
+      let             cidr = entry.cidr;
+      let             [ ip, netmask ] = cidr.split("/");
+
+      // Split the IP address apart at dots
+      ip = ip.split(".");
+
+      // For each component of the IP address...
+      ip.forEach(
+        (octet) =>
+        {
+          // convert it to binary, left-pad with zeros, take
+          // right-most 8 characters
+          bits.push(("00000000" + (+octet).toString(2)).substr(-8));
+        });
+
+      // Get a single cohesive bitstring
+      bits = bits.join("");
+
+      // Make our life easy by separating it into one character per
+      // array element
+      bits = bits.split("");
+
+      // Set the netmask-indicated bits to 1
+      for (i = netmask; i < 32; i++)
+      {
+        bits[i] = "1";
+      }
+
+      // Rejoin the bits into a cohesive string
+      bits = bits.join("");
+
+      // Split the bits apart at 8-bit boundaries. Convert each set of
+      // 8 bits to an integer.
+      ip = [];
+      for (i = 0; i < 32; i += 8)
+      {
+        octet = bits.substr(i, 8);
+        octet = parseInt(octet, 2);
+        ip.push(octet);
+      }
+
+      // Turn it back into IP address string format
+      return ip.join(".");
+    };
+
+    /*
+     * The size of the largest IP datagram which this entity can re-assemble
+     * from incoming IP fragmented datagrams received on this interface.
+     */
+    let             ipAdEntReasmMaxSize = async () =>
+    {
+    };
+
+    return Promise.all(
+      [
+        ipAdEntAddr(),
+        ipAdEntIfIndex(),
+        ipAdEntNetMask(),
+        ipAdEntBcastAddr(),
+        ipAdEntReasmMaxSize()
+      ])
+      .then((results) =>
+        {
+          let result =
+            {
+              ipAdEntAddr         : results.shift(),
+              ipAdEntIfIndex      : results.shift(),
+              ipAdEntNetMask      : results.shift(),
+              ipAdEntBcastAddr    : results.shift(),
+              ipAdEntReasmMaxSize : results.shift()
+            };
+
+          return result;
+        });
   }
 
   /*
@@ -1289,54 +1452,135 @@ class SnmpLinuxLib
    */
   async getIpNetToMediaTable()
   {
+    const           addressInfo = await getAddressInfo();
+    const           byHwAddr = addressInfo.byHwAddr;
+
+    return Promise.resolve()
+      .then(
+        () =>
+        {
+          let             hwAddr;
+          let             promises = [];
+
+          // Call `getIpNetToMediaEntry` for each hardware address,
+          // binding the just-retrieved addressInfo so that
+          // `getIpAddrEntry` need not re-retrieve it.
+          for (hwAddr in byHwAddr.IPv4)
+          {
+            promises.push(this.getIpNetToMediaEntry.bind(addressInfo)(hwAddr));
+          }
+
+          return Promise.all(promises);
+        });
   }
 
   /*
    * Each entry contains one IpAddress to `physical' address equivalence.
    */
-  async getIpNetToMediaEntry()
+  async getIpNetToMediaEntry(hwAddr)
   {
+    let             entry;
+    let             addressInfo;
+
+    // If we were called externally, `this` will be our class. If we
+    // were called from `getIpAddrTable`, above, `this` will be the
+    // already-ascertained address information. If the address info is
+    // already available, we save ourselves a library call for each
+    // entry.
+    if (this instanceof SnmpLinuxLib)
+    {
+      addressInfo = await getAddressInfo();
+    }
+    else
+    {
+      addressInfo = this; // already have addressInfo from getIpAddrTable
+    }
+
+    // Get the information about this address
+    entry = addressInfo.byHwAddr.IPv4[hwAddr];
+
+    /*
+     * The interface on which this entry's equivalence is effective. The
+     * interface identified by a particular value of this index is the same
+     * interface as identified by the same value of ifIndex.
+     */
+    let             ipNetToMediaIfIndex = async () =>
+    {
+      return Promise.resolve()
+        .then(() => addIfIndexes())
+        .then(() =>
+          {
+            // It'd better be there now
+            if (! (entry.interface in ifIndexMap))
+            {
+              throw new Error(`Interface ${entry.interface} does not exist`);
+            }
+
+            return ifIndexMap[entry.interface];
+          });
+    };
+
+    /*
+     * The media-dependent `physical' address.
+     */
+    let             ipNetToMediaPhysAddress = async () =>
+    {
+      return hwAddr;
+    };
+
+    /*
+     * The IpAddress corresponding to the media- dependent `physical' address.
+     */
+    let             ipNetToMediaNetAddress = async () =>
+    {
+      return entry.address;
+    };
+
+    /*
+     * The type of mapping.
+     *
+     * Setting this object to the value invalid(2) has the effect of
+     * invalidating the corresponding entry in the ipNetToMediaTable. That is,
+     * it effectively dissasociates the interface identified with said entry
+     * from the mapping identified with said entry. It is an
+     * implementation-specific matter as to whether the agent removes an
+     * invalidated entry from the table. Accordingly, management stations must
+     * be prepared to receive tabular information from agents that corresponds
+     * to entries not currently in use. Proper interpretation of such entries
+     * requires examination of the relevant ipNetToMediaType object.
+     */
+    let             ipNetToMediaType = async () =>
+    {
+      // TODO: How do we determine this generically?
+      return 1;                 // 1=other 2=invalid 3=dynamic 4=static
+    };
+
+    return Promise.all(
+      [
+        ipNetToMediaIfIndex(),
+        ipNetToMediaPhysAddress(),
+        ipNetToMediaNetAddress(),
+        ipNetToMediaType()
+      ])
+      .then((results) =>
+        {
+          let result =
+            {
+              ipNetToMediaIfIndex    : results.shift(),
+              ipNetToMediaPhysddress : results.shift(),
+              ipNetToMediaNetAddress : results.shift(),
+              ipNetToMediaType       : results.shift()
+            };
+
+          return result;
+        });
   }
 
   /*
-   * The interface on which this entry's equivalence is effective. The
-   * interface identified by a particular value of this index is the same
-   * interface as identified by the same value of ifIndex.
+   * **********************************************************************
+   * additional IP objects
+   * **********************************************************************
    */
-  async getIpNetToMediaIfIndex()
-  {
-  }
-
-  /*
-   * The media-dependent `physical' address.
-   */
-  async getIpNetToMediaPhysAddress()
-  {
-  }
-
-  /*
-   * The IpAddress corresponding to the media- dependent `physical' address.
-   */
-  async getIpNetToMediaNetAddress()
-  {
-  }
-
-  /*
-   * The type of mapping.
-   *
-   * Setting this object to the value invalid(2) has the effect of
-   * invalidating the corresponding entry in the ipNetToMediaTable. That is,
-   * it effectively dissasociates the interface identified with said entry
-   * from the mapping identified with said entry. It is an
-   * implementation-specific matter as to whether the agent removes an
-   * invalidated entry from the table. Accordingly, management stations must
-   * be prepared to receive tabular information from agents that corresponds
-   * to entries not currently in use. Proper interpretation of such entries
-   * requires examination of the relevant ipNetToMediaType object.
-   */
-  async getIpNetToMediaType()
-  {
-  }
 
   /*
    * The number of routing entries which were chosen to be discarded even
