@@ -1316,22 +1316,6 @@ class SnmpLinuxLib
         });
   }
 
-  /* Flag bits for the `flags` field returned in `getIpRouteTable` entries */
-  IpRouteTable_FLAGS =
-    {
-      Up        : 0x0001,          // route usable
-      Gateway   : 0x0002,          // destination is a gateway
-      Host      : 0x0004,          // host entry (net otherwise)
-      Reinstate : 0x0008,          // reinstate route after tmout
-      Dynamic   : 0x0010,          // created dyn. (by redirect)
-      Modified  : 0x0020,          // modified dyn. (by redirect)
-      Mtu       : 0x0040,          // specific MTU for this route
-      Window    : 0x0080,          // per route window clamping
-      Irtt      : 0x0100,          // Initial round trip time
-      Reject    : 0x0200,          // Reject route
-      Notcached : 0x0400           // this route isn't cached
-    };
-
   /*
    * The IP Address Translation table used for mapping from IP addresses to
    * physical addresses.
@@ -1914,73 +1898,55 @@ class SnmpLinuxLib
       .then((info) => info.Tcp.RetransSegs);
   }
 
-  /*
+  /**
    * A table containing TCP connection-specific information.
-   */
-  async getTcpConnTable()
-  {
-  }
-
-  /*
-   * Information about a particular current TCP connection. An object of this
-   * type is transient, in that it ceases to exist when (or soon after) the
-   * connection makes the transition to the CLOSED state.
-   */
-  async getTcpConnEntry()
-  {
-  }
-
-  /*
-   * The state of this TCP connection.
    *
-   * The only value which may be set by a management station is deleteTCB(12).
-   * Accordingly, it is appropriate for an agent to return a `badValue'
-   * response if a management station attempts to set this object to any other
-   * value.
+   * @param bResolve {Boolean}
+   *   If true, attempt to resolve each remote address and create, in each
+   *   resolvable entry, an array called `tcpConnRemHosts` with the host names
+   *   for that address.
    *
-   * If a management station sets this object to the value deleteTCB(12), then
-   * this has the effect of deleting the TCB (as defined in RFC 793) of the
-   * corresponding connection on the managed node, resulting in immediate
-   * termination of the connection.
+   * @return {Array}
+   *   The returned array contains entries which are maps, each with the
+   *   following members:
    *
-   * As an implementation-specific option, a RST
+   *   tcpConnLocalAddress
+   *     The local IP address for this TCP connection. In the case of a
+   *     connection in the listen state which is willing to accept connections
+   *     for any IP interface associated with the node, the value 0.0.0.0 is
+   *     used.
    *
-   * segment may be sent from the managed node to the other TCP endpoint (note
-   * however that RST segments are not sent reliably).
+   *   tcpConnLocalPort
+   *     The local port number for this TCP connection.
+   *
+   *   tcpConnRemAddress
+   *     The remote IP address for this TCP connection.
+   *
+   *   tcpConnRemPort
+   *     The remote port number for this TCP connection.
+   *
+   *   tcpConnRemHosts
+   *     Only if `bResolve` is true, this array member is added if
+   *     `tcpConnRemAddress` can be resolved to one or more host names.
    */
-  async getTcpConnState()
+  async getTcpConnTable(bResolve)
   {
+    return Promise.resolve()
+      .then(() => getTcpConns4(bResolve))
+      .then(
+        (connsInfo) =>
+        {
+          return connsInfo;
+        });
   }
 
-  /*
-   * The local IP address for this TCP connection. In the case of a connection
-   * in the listen state which is willing to accept connections for any IP
-   * interface associated with the node, the value 0.0.0.0 is used.
-   */
-  async getTcpConnLocalAddress()
-  {
-  }
+
 
   /*
-   * The local port number for this TCP connection.
+   * **********************************************************************
+   * additional TCP objects
+   * **********************************************************************
    */
-  async getTcpConnLocalPort()
-  {
-  }
-
-  /*
-   * The remote IP address for this TCP connection.
-   */
-  async getTcpConnRemAddress()
-  {
-  }
-
-  /*
-   * The remote port number for this TCP connection.
-   */
-  async getTcpConnRemPort()
-  {
-  }
 
   /*
    * The total number of segments received in error (e.g., bad TCP checksums).
@@ -2054,11 +2020,45 @@ class SnmpLinuxLib
       .then((info) => info.Udp.OutDatagrams);
   }
 
-  /*
+  /**
    * A table containing UDP listener information.
+   *
+   * @param bResolve {Boolean}
+   *   If true, attempt to resolve each remote address and create, in each
+   *   resolvable entry, an array called `udpRemHosts` with the host names for
+   *   that address.
+   *
+   * @return {Array}
+   *   The returned array contains entries which are maps, each with the
+   *   following members:
+   *
+   *   udpLocalAddress
+   *     The local IP address for this UDP listener. In the case of a UDP
+   *     listener which is willing to accept datagrams for any IP interface
+   *     associated with the node, the value 0.0.0.0 is used.
+   *
+   *   udpLocalPort
+   *     The local port number for this UDP listener.
+   *
+   *   udpRemAddress
+   *     The remote IP address for this UDP listener.
+   *
+   *   udpRemPort
+   *     The remote port number for this UDP listener.
+   *
+   *   udpRemHosts
+   *     Only if `bResolve` is true, this array member is added if
+   *     `udpRemAddress` can be resolved to one or more host names.
    */
-  async getUdpTable()
+  async getUdpTable(bResolve)
   {
+    return Promise.resolve()
+      .then(() => getUdpListeners4(bResolve))
+      .then(
+        (listenerInfo) =>
+        {
+          return listenerInfo;
+        });
   }
 
   /*
@@ -2270,6 +2270,44 @@ class SnmpLinuxLib
   }
 }
 
+/* Flag bits for the `flags` field returned in `getIpRouteTable` entries */
+const IpRouteTable_FLAGS =
+  {
+    Up        : 0x0001,          // route usable
+    Gateway   : 0x0002,          // destination is a gateway
+    Host      : 0x0004,          // host entry (net otherwise)
+    Reinstate : 0x0008,          // reinstate route after tmout
+    Dynamic   : 0x0010,          // created dyn. (by redirect)
+    Modified  : 0x0020,          // modified dyn. (by redirect)
+    Mtu       : 0x0040,          // specific MTU for this route
+    Window    : 0x0080,          // per route window clamping
+    Irtt      : 0x0100,          // Initial round trip time
+    Reject    : 0x0200,          // Reject route
+    Notcached : 0x0400           // this route isn't cached
+  };
+
+/* Values of the connection state field in `getTcpConnTable` */
+const TcpConnEntry_CONNECTION_STATE =
+  {
+    Closed          : 1,
+    Listen          : 2,
+    SynSent         : 3,
+    SynReceived     : 4,
+    Established     : 5,
+    FinWait1        : 6,
+    FinWait2        : 7,
+    CloseWait       : 8,
+    LastAck         : 9,
+    Closing         : 10,
+    TimeWait        : 11,
+    NewSynReceived  : 99 // not in RFC-1213 but is a current valid state
+  };
+
+
+
+
+
+
 /**
  * This function ensures that we have a constant mapping of interface
  * to index for the duration of this library's runtime instance.
@@ -2364,7 +2402,7 @@ function hexToIp4(hex)
 }
 
 /**
- * Get information about all IPv4 routes routes
+ * Get information about all IPv4 routes
  */
 async function getRouteInfo4()
 {
@@ -2425,5 +2463,226 @@ async function getRouteInfo4()
 }
 
 
+/**
+ * Get information about all IPv4 TCP connections
+ *
+ * @param bResolve {Boolean}
+  *   If true, attempt to resolve each remote address and create, in each
+ *   resolvable entry, an array called `tcpConnRemHosts` with the host names
+ *   for that address.
+ */
+async function getTcpConns4(bResolve)
+{
+  let             conns = [];
+
+  return Promise.resolve()
+    .then(() => fsp.readFile("/proc/net/tcp"))
+    .then((content) => content.toString().split("\n"))
+    .then(
+      async (lines) =>
+      {
+        lines.forEach(
+          (line, i) =>
+          {
+            let             addr;
+            let             port;
+            let             state;
+            let             fields;
+            let             entry = {};
+            const           ConnState = TcpConnEntry_CONNECTION_STATE;
+            const           linuxToRfc1213ConnStateMap =
+                  {
+                    1  : ConnState.Established,     // TCP_ESTABLISHED
+                    2  : ConnState.SynSent,         // TCP_SYN_SENT
+                    3  : ConnState.SynReceived,     // TCP_SYN_RECV
+                    4  : ConnState.FinWait1,        // TCP_FIN_WAIT1
+                    5  : ConnState.FinWait2,        // TCP_FIN_WAIT2
+                    6  : ConnState.TimeWait,        // TCP_TIME_WAIT
+                    7  : ConnState.Closed,          // TCP_CLOSE
+                    8  : ConnState.CloseWait,       // TCP_CLOSE_WAIT
+                    9  : ConnState.LastAck,         // TCP_LAST_ACK
+                    10 : ConnState.Listen,          // TCP_LISTEN
+                    11 : ConnState.Closing,         // TCP_CLOSING,
+                    12 : ConnState.NewSynReceived   // TCP_NEW_SYN_RECV
+                  };
+
+            // Skip the first line, which is the field name definition
+            if (i === 0)
+            {
+              return;
+            }
+
+            // If the line is empty, e.g., last line, we have nothing to do
+            if (line.length === 0)
+            {
+              return;
+            }
+
+            // Split off the entry number. I *usually* has leading
+            // spaces, but we may not be able to count on that, so
+            // split initially at the first colon
+            line = line.replace(/^[^:]*: *(.*)/, "$1");
+
+            // Split the line on whitespace
+            fields = line.split(/\s+/g);
+
+            // Split the local address and port apart
+            [ addr, port ] = fields.shift().split(":");
+            entry.tcpConnLocalAddress = hexToIp4(addr);
+            entry.tcpConnLocalPort = parseInt(port, 16);
+
+            // Similarly for the remote address and port
+            [ addr, port ] = fields.shift().split(":");
+            entry.tcpConnRemAddress = hexToIp4(addr);
+            entry.tcpConnRemPort = parseInt(port, 16);
+
+            // Get the connection state
+            state = linuxToRfc1213ConnStateMap[parseInt(fields.shift(), 16)];
+            entry.tcpConnState = state;
+
+            // Add this entry to the return result
+            conns.push(entry);
+          });
+
+        return conns;
+      })
+    .then(
+      (conns) =>
+      {
+        let             promises;
+        let             Resolver;
+        let             resolver;
+
+        // If we weren't asked to resolve, we're done
+        if (! bResolve)
+        {
+          return conns;
+        }
+
+        // Prepare to resolve
+        promises = [];
+        Resolver = require("dns").promises.Resolver;
+        resolver = new Resolver();
+
+        conns.forEach(
+          (conn) =>
+          {
+            // Create an array of promises with the reverse resolve
+            promises.push(
+              resolver.reverse(conn.tcpConnRemAddress)
+                .then(
+                  (hosts) =>
+                  {
+                    conn.tcpConnRemHosts = hosts;
+                  }));
+          });
+
+        // Await all resolving. We ignore any failures (unable to resolve)
+        return Promise.allSettled(promises)
+          .then(() => conns);
+      });
+}
+
+/**
+ * Get information about IPv4 UDP listeners
+ *
+ * @param bResolve {Boolean}
+ *   If true, attempt to resolve each remote address and create, in each
+ *   resolvable entry, an array called `udpRemHosts` with the host names for
+ *   that address.
+ */
+async function getUdpListeners4(bResolve)
+{
+  let             listeners = [];
+  
+  return Promise.resolve()
+    .then(() => fsp.readFile("/proc/net/udp"))
+    .then((content) => content.toString().split("\n"))
+    .then(
+      async (lines) =>
+      {
+        lines.forEach(
+          (line, i) =>
+          {
+            let             addr;
+            let             port;
+            let             fields;
+            let             entry = {};
+
+            // Skip the first line, which is the field name definition
+            if (i === 0)
+            {
+              return;
+            }
+
+            // If the line is empty, e.g., last line, we have nothing to do
+            if (line.length === 0)
+            {
+              return;
+            }
+
+            // Split off the entry number. I *usually* has leading
+            // spaces, but we may not be able to count on that, so
+            // split initially at the first colon
+            line = line.replace(/^[^:]*: *(.*)/, "$1");
+
+            // Split the line on whitespace
+            fields = line.split(/\s+/g);
+
+            // Split the local address and port apart
+            [ addr, port ] = fields.shift().split(":");
+            entry.udpLocalAddress = hexToIp4(addr);
+            entry.udpLocalPort = parseInt(port, 16);
+
+            // Similarly for the remote address and port
+            [ addr, port ] = fields.shift().split(":");
+            entry.udpRemAddress = hexToIp4(addr);
+            entry.udpRemPort = parseInt(port, 16);
+
+            // Add this entry to the return result
+            listeners.push(entry);
+          });
+
+        return listeners;
+      })
+    .then(
+      (listeners) =>
+      {
+        let             promises;
+        let             Resolver;
+        let             resolver;
+
+        // If we weren't asked to resolve, we're done
+        if (! bResolve)
+        {
+          return listeners;
+        }
+
+        // Prepare to resolve
+        promises = [];
+        Resolver = require("dns").promises.Resolver;
+        resolver = new Resolver();
+
+        listeners.forEach(
+          (listener) =>
+          {
+            // Create an array of promises with the reverse resolve
+            promises.push(
+              resolver.reverse(listener.udpRemAddress)
+                .then(
+                  (hosts) =>
+                  {
+                    listener.udpRemHosts = hosts;
+                  }));
+          });
+
+        // Await all resolving. We ignore any failures (unable to resolve)
+        return Promise.allSettled(promises)
+          .then(() => listeners);
+      });
+}
 
 module.exports = SnmpLinuxLib;
+
+module.exports.IpRouteTable_FLAGS            = IpRouteTable_FLAGS;
+module.exports.TcpConnEntry_CONNECTION_STATE = TcpConnEntry_CONNECTION_STATE;
