@@ -20,69 +20,6 @@ let             ifIndexMap = {}; // keyed by interface name
 let             nextIfIndex = 1; // unique value in ifIndexMap
 const           fsp = require("fs").promises;
 
-/**
- * This function ensures that we have a constant mapping of interface
- * to index for the duration of this library's runtime instance.
- *
- * @return {String[]}
- *   The input parameter is returned unaltered
- */
-async function addIfIndexes()
-{
-  return Promise.resolve()
-    .then(() => fsp.readdir("/sys/class/net"))
-    .then(
-      (ifNames) =>
-      {
-        // Add an entry to our interface index map, if not already there
-        ifNames.forEach(
-          (ifName) =>
-          {
-            if (! (ifName in ifIndexMap))
-            {
-              ifIndexMap[ifName] = nextIfIndex++;
-            }
-          });
-
-        return ifNames;
-      });
-}
-
-async function getAddressInfo()
-{
-  let             ret;
-  let             iface;
-  let             byIpAddr = { IPv4 : {}, IPv6 : {} };
-  let             byHwAddr = { IPv4 : {}, IPv6 : {} };
-  let             networkInterfaces = require("os").networkInterfaces();
-
-  // For each interface...
-  for (iface in networkInterfaces)
-  {
-    // For each entry in that interface's array...
-    networkInterfaces[iface].forEach(
-      (elem) =>
-      {
-        // Add the interface name to the entry
-        elem.interface = iface;
-
-        // Add this entry to the map keyed by IP address
-        byIpAddr[elem.family][elem.address] = elem;
-
-        // Add this entry to the map keyed by HW address, excluding
-        // interface lo
-        if (iface != "lo")
-        {
-          byHwAddr[elem.family][elem.mac] = elem;
-        }
-      });
-  }
-
-  // Give 'em the three maps
-  ret = { networkInterfaces, byIpAddr, byHwAddr };
-  return ret;
-}
-
 class SnmpLinuxLib
 {
   cache = {};
@@ -1281,170 +1218,119 @@ class SnmpLinuxLib
   }
 
   /*
-   * This entity's IP Routing table.
+   * **********************************************************************
+   * the IP routing table
+   *
+   * The IP routing table contains an entry for each route
+   * presently known to this entity.
+   * **********************************************************************
+   */
+
+  /*
+   * This entity's IP Routing table. Each element of the returned
+   * array contains the following members:
+   *
+   * destination (maps to ipRouteDest)
+   *   The destination IP address of this route. An entry with a value of
+   *   0.0.0.0 is considered a default route. Multiple routes to a single
+   *   destination can appear in the table, but access to such multiple
+   *   entries is dependent on the table- access mechanisms defined by the
+   *   network management protocol in use.
+   *
+   * interface
+   *   The name which uniquely identifies the local interface through which
+   *   the next hop of this route should be reached.
+   *
+   * interfaceIndex (maps to ipRouteIfIndex)
+   *   The index value which uniquely identifies the local interface through
+   *   which the next hop of this route should be reached. The interface
+   *   identified by a particular value of this index is the same interface as
+   *   identified by the same value of ifIndex.
+   *
+   * metric (maps to ipRouteMetric1)
+   *   The primary routing metric for this route. The semantics of this metric
+   *   are determined by the routing-protocol specified in the route's
+   *   ipRouteProto value. If this metric is not used, its value should be set
+   *   to -1.
+   *
+   * gateway (maps to ipRouteNextHop)
+   *   The IP address of the next hop of this route. (In the case of a route
+   *   bound to an interface which is realized via a broadcast media, the
+   *   value of this field is the agent's IP address on that interface.)
+   *
+   * flags
+   *   Bit fields with the meanings shown in `IpRouteTable_FLAGS`
+   *
+   * mask
+   *   Indicate the mask to be logical-ANDed with the destination address
+   *   before being compared to the value in the destination field. For those
+   *   systems that do not support arbitrary subnet masks, an agent constructs
+   *   the value of the mask by determining whether the value of the
+   *   correspondent destination field belong to a class-A, B, or C network,
+   *   and then using one of:
+   *
+   *        mask           network
+   *        255.0.0.0      class-A
+   *        255.255.0.0    class-B
+   *        255.255.255.0  class-C
+   *
+   *   If the value of the destination is 0.0.0.0 (a default route), then the
+   *   mask value is also 0.0.0.0. It should be noted that all IP routing
+   *   subsystems implicitly use this mechanism.
+   *
+   * -------------------------------------------------------------------------
+   *
+   * No mapping for ipRouteType
+   *   The type of route. Note that the values direct(3) and indirect(4) refer
+   *   to the notion of direct and indirect routing in the IP architecture.
+   *
+   *   Setting this object to the value invalid(2) has the effect of
+   *   invalidating the corresponding entry in the ipRouteTable object. That
+   *   is, it effectively dissasociates the destination identified with said
+   *   entry from the route identified with said entry. It is an
+   *   implementation-specific matter as to whether the agent removes an
+   *   invalidated entry from the table. Accordingly, management stations must
+   *   be prepared to receive tabular information from agents that corresponds
+   *   to entries not currently in use. Proper interpretation of such entries
+   *   requires examination of the relevant ipRouteType object.
+   *
+   * No mapping for ipRouteProto
+   *   The routing mechanism via which this route was learned. Inclusion of
+   *   values for gateway routing protocols is not intended to imply that
+   *   hosts should support those protocols.
+   *
+   * No mapping for ipRouteAge
+   *   The number of seconds since this route was last updated or otherwise
+   *   determined to be correct. Note that no semantics of `too old' can be
+   *   implied except through knowledge of the routing protocol by which the
+   *   route was learned.
    */
   async getIpRouteTable()
   {
+    return Promise.resolve()
+      .then(() => getRouteInfo4())
+      .then(
+        (routeInfo) =>
+        {
+          return routeInfo;
+        });
   }
 
-  /*
-   * A route to a particular destination.
-   */
-  async getIpRouteEntry()
-  {
-  }
-
-  /*
-   * The destination IP address of this route. An entry with a value of
-   * 0.0.0.0 is considered a default route. Multiple routes to a single
-   * destination can appear in the table, but access to such multiple entries
-   * is dependent on the table- access mechanisms defined by the network
-   * management protocol in use.
-   */
-  async getIpRouteDest()
-  {
-  }
-
-  /*
-   * The index value which uniquely identifies the local interface through
-   * which the next hop of this route should be reached. The interface
-   * identified by a particular value of this index is the same interface as
-   * identified by the same value of ifIndex.
-   */
-  async getIpRouteIfIndex()
-  {
-  }
-
-  /*
-   * The primary routing metric for this route. The semantics of this metric
-   * are determined by the routing-protocol specified in the route's
-   * ipRouteProto value. If this metric is not used, its value should be set
-   * to -1.
-   */
-  async getIpRouteMetric1()
-  {
-  }
-
-  /*
-   * An alternate routing metric for this route. The semantics of this metric
-   * are determined by the routing-protocol specified in the route's
-   * ipRouteProto value. If this metric is not used, its value should be set
-   * to -1.
-   */
-  async getIpRouteMetric2()
-  {
-  }
-
-  /*
-   * An alternate routing metric for this route. The semantics of this metric
-   * are determined by the routing-protocol specified in the route's
-   * ipRouteProto value. If this metric is not used, its value should be set
-   * to -1.
-   */
-  async getIpRouteMetric3()
-  {
-  }
-
-  /*
-   * An alternate routing metric for this route. The semantics of this metric
-   * are determined by the routing-protocol specified in the route's
-   * ipRouteProto value. If this metric is not used, its value should be set
-   * to -1.
-   */
-  async getIpRouteMetric4()
-  {
-  }
-
-  /*
-   * The IP address of the next hop of this route. (In the case of a route
-   * bound to an interface which is realized via a broadcast media, the value
-   * of this field is the agent's IP address on that interface.)
-   */
-  async getIpRouteNextHop()
-  {
-  }
-
-  /*
-   * The type of route. Note that the values direct(3) and indirect(4) refer
-   * to the notion of direct and indirect routing in the IP architecture.
-   *
-   * Setting this object to the value invalid(2) has the effect of
-   * invalidating the corresponding entry in the ipRouteTable object. That is,
-   * it effectively dissasociates the destination identified with said entry
-   * from the route identified with said entry. It is an
-   * implementation-specific matter as to whether the agent removes an
-   * invalidated entry from the table. Accordingly, management stations must
-   * be prepared to receive tabular information from agents that corresponds
-   * to entries not currently in use. Proper interpretation of such entries
-   * requires examination of the relevant ipRouteType object.
-   */
-  async getIpRouteType()
-  {
-  }
-
-  /*
-   * The routing mechanism via which this route was learned. Inclusion of
-   * values for gateway routing protocols is not intended to imply that hosts
-   * should support those protocols.
-   */
-  async getIpRouteProto()
-  {
-  }
-
-  /*
-   * The number of seconds since this route was last updated or otherwise
-   * determined to be correct. Note that no semantics of `too old' can be
-   * implied except through knowledge of the routing protocol by which the
-   * route was learned.
-   */
-  async getIpRouteAge()
-  {
-  }
-
-  /*
-   * Indicate the mask to be logical-ANDed with the destination address before
-   * being compared to the value in the ipRouteDest field. For those systems
-   * that do not support arbitrary subnet masks, an agent constructs the value
-   * of the ipRouteMask by determining whether the value of the correspondent
-   * ipRouteDest field belong to a class-A, B, or C network, and then using
-   * one of:
-   *
-   *      mask           network
-   *      255.0.0.0      class-A
-   *      255.255.0.0    class-B
-   *      255.255.255.0  class-C
-   *
-   * If the value of the ipRouteDest is 0.0.0.0 (a default route), then the
-   * mask value is also 0.0.0.0. It should be noted that all IP routing
-   * subsystems implicitly use this mechanism.
-   */
-  async getIpRouteMask()
-  {
-  }
-
-  /*
-   * An alternate routing metric for this route. The semantics of this metric
-   * are determined by the routing-protocol specified in the route's
-   * ipRouteProto value. If this metric is not used, its value should be set
-   * to -1.
-   */
-  async getIpRouteMetric5()
-  {
-  }
-
-  /*
-   * A reference to MIB definitions specific to the particular routing
-   * protocol which is responsible for this route, as determined by the value
-   * specified in the route's ipRouteProto value. If this information is not
-   * present, its value should be set to the OBJECT IDENTIFIER { 0 0 }, which
-   * is a syntatically valid object identifier, and any conformant
-   * implementation of ASN.1 and BER must be able to generate and recognize
-   * this value.
-   */
-  async getIpRouteInfo()
-  {
-    return "0.0";
-  }
+  /* Flag bits for the `flags` field returned in `getIpRouteTable` entries */
+  IpRouteTable_FLAGS =
+    {
+      Up        : 0x0001,          // route usable
+      Gateway   : 0x0002,          // destination is a gateway
+      Host      : 0x0004,          // host entry (net otherwise)
+      Reinstate : 0x0008,          // reinstate route after tmout
+      Dynamic   : 0x0010,          // created dyn. (by redirect)
+      Modified  : 0x0020,          // modified dyn. (by redirect)
+      Mtu       : 0x0040,          // specific MTU for this route
+      Window    : 0x0080,          // per route window clamping
+      Irtt      : 0x0100,          // Initial round trip time
+      Reject    : 0x0200,          // Reject route
+      Notcached : 0x0400           // this route isn't cached
+    };
 
   /*
    * The IP Address Translation table used for mapping from IP addresses to
@@ -2383,5 +2269,161 @@ class SnmpLinuxLib
   {
   }
 }
+
+/**
+ * This function ensures that we have a constant mapping of interface
+ * to index for the duration of this library's runtime instance.
+ *
+ * @return {String[]}
+ *   The input parameter is returned unaltered
+ */
+async function addIfIndexes()
+{
+  return Promise.resolve()
+    .then(() => fsp.readdir("/sys/class/net"))
+    .then(
+      (ifNames) =>
+      {
+        // Add an entry to our interface index map, if not already there
+        ifNames.forEach(
+          (ifName) =>
+          {
+            if (! (ifName in ifIndexMap))
+            {
+              ifIndexMap[ifName] = nextIfIndex++;
+            }
+          });
+
+        return ifNames;
+      });
+}
+
+/**
+ * Get the address information about each interface
+ */
+async function getAddressInfo()
+{
+  let             ret;
+  let             iface;
+  let             byIpAddr = { IPv4 : {}, IPv6 : {} };
+  let             byHwAddr = { IPv4 : {}, IPv6 : {} };
+  let             networkInterfaces = require("os").networkInterfaces();
+
+  // For each interface...
+  for (iface in networkInterfaces)
+  {
+    // For each entry in that interface's array...
+    networkInterfaces[iface].forEach(
+      (elem) =>
+      {
+        // Add the interface name to the entry
+        elem.interface = iface;
+
+        // Add this entry to the map keyed by IP address
+        byIpAddr[elem.family][elem.address] = elem;
+
+        // Add this entry to the map keyed by HW address, excluding
+        // interface lo
+        if (iface != "lo")
+        {
+          byHwAddr[elem.family][elem.mac] = elem;
+        }
+      });
+  }
+
+  // Give 'em the three maps
+  ret = { networkInterfaces, byIpAddr, byHwAddr };
+  return ret;
+}
+
+/**
+ * Convert a hex IPv4 address, which is in reverse order, into its
+ * normal dotted-decimal IPv4 address format.
+ *
+ * @param hex {String}
+ *   The hex string to be convert to standard IP address format
+ */
+function hexToIp4(hex)
+{
+  let             ip = [];
+
+  // Pad the hex string on the left, to ensure we have exactly 8 nibbles
+  hex = ("00000000" + hex).substr(-8);
+
+  // Split it ito its four components and reverse the order
+  ip.unshift(hex.substr(0, 2));
+  ip.unshift(hex.substr(2, 2));
+  ip.unshift(hex.substr(4, 2));
+  ip.unshift(hex.substr(6, 2));
+
+  // Map each two-character hex string to a number
+  ip = ip.map(v => parseInt(v, 16));
+
+  // Join it back together into IP address format
+  return ip.join(".");
+}
+
+/**
+ * Get information about all IPv4 routes routes
+ */
+async function getRouteInfo4()
+{
+  let             routes = [];
+
+  return Promise.resolve()
+    .then(() => addIfIndexes())
+    .then(() => fsp.readFile("/proc/net/route"))
+    .then((content) => content.toString().split("\n"))
+    .then(
+      (lines) =>
+      {
+        lines.forEach(
+          (line, i) =>
+          {
+            let             entry;
+            let             fields;
+
+            // Skip the first line, which is the field name definition
+            if (i === 0)
+            {
+              return;
+            }
+
+            // If the line is empty, e.g., last line, we have nothing to do
+            if (line.length === 0)
+            {
+              return;
+            }
+
+            // Split the line on whitespace
+            fields = line.split(/\s+/g);
+
+            // Add a route entry with the fields identified
+            entry =
+              {
+                interface      : fields[0],
+                interfaceIndex : ifIndexMap[fields.shift()],
+                destination    : hexToIp4(fields.shift()),
+                gateway        : hexToIp4(fields.shift()),
+                flags          : parseInt(fields.shift(), 16),
+                refcount       : +fields.shift(),
+                use            : +fields.shift(),
+                metric         : +fields.shift(),
+                mask           : hexToIp4(fields.shift())
+              };
+
+            // Delete irrelevant/unused fields
+            delete entry.refcount;
+            delete entry.use;
+
+            // Add this entry to the results
+            routes.push(entry);
+          });
+
+        return routes;
+      });
+}
+
+
 
 module.exports = SnmpLinuxLib;
