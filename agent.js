@@ -40,7 +40,7 @@ async function agent()
       return;
     }
 
-    console.log(JSON.stringify(data.pdu.varbinds, null, 2));
+//    console.log(JSON.stringify(data.pdu.varbinds, null, 2));
   };
 
   agent = snmp.createAgent(snmpOptions, callback);
@@ -51,83 +51,13 @@ async function agent()
   await require("./node-net-snmp-if")(
     agent,
     "Hello Linux!",
-    "1.3.6.1.4.1.56827.1.1",
-    "Derrell Lipman, derrell.lipman@unwireduniverse.com",
+    "1.3.6.1.4.1.999999.1.1",
+    "Derrell Lipman",
     "Agent example",
     "Testing lab",
-    Math.pow(2, 3-1));            // layer 3
+    Math.pow(2, 3-1) + Math.pow(2, 4-1));            // layer 3+4
 
-  // scalarProvider =
-  //   {
-  //     name: "sysDescr",
-  //     type: snmp.MibProviderType.Scalar,
-  //     oid: "1.3.6.1.2.1.1.1",
-  //     scalarType: snmp.ObjectType.OctetString,
-  //     maxAccess: snmp.MaxAccess['read-write']
-  //   };
-  // agent.registerProvider(scalarProvider);
-
-  tableProvider =
-    {
-      name: "ifTable",
-      type: snmp.MibProviderType.Table,
-      oid: "1.3.6.1.2.1.2.2.1",
-      maxAccess: snmp.MaxAccess['not-accessible'],
-      tableColumns:
-      [
-        {
-          number: 1,
-          name: "ifIndex",
-          type: snmp.ObjectType.Integer,
-          maxAccess: snmp.MaxAccess['read-only']
-        },
-        {
-          number: 2,
-          name: "ifDescr",
-          type: snmp.ObjectType.OctetString,
-          maxAccess: snmp.MaxAccess['read-write'],
-          defVal: "Hello world!"
-        },
-        {
-          number: 3,
-          name: "ifType",
-          type: snmp.ObjectType.Integer,
-          maxAccess: snmp.MaxAccess['read-only'],
-          constraints: {
-            enumeration: {
-              "1": "goodif",
-              "2": "badif",
-              "6": "someif",
-              "24": "anotherif"
-            }
-          },
-          defVal: 6
-        },
-        {
-          number: 99,
-          name: "ifStatus",
-          type: snmp.ObjectType.Integer,
-          maxAccess: snmp.MaxAccess['read-write'],
-          rowStatus: true
-        }
-      ],
-      tableIndex:
-      [
-        {
-          columnName: "ifIndex"
-        }
-      ],
-      handler: function ifTable(mibRequest)
-      {
-        // e.g. can update the table before responding to the request here
-        mibRequest.done();
-      }
-    };
-  agent.registerProvider(tableProvider);
-
-  mib.setScalarValue("sysDescr", "hi there");
-
-
+/*
   mib.dump(
     {
       leavesOnly: false,
@@ -135,6 +65,7 @@ async function agent()
       showValues: true,
       showTypes: true
     });
+*/
 }
 
 (async () => await agent())();

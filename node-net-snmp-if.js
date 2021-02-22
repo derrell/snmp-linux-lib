@@ -88,8 +88,6 @@ function getLinuxLibFunction(s)
  */
 function addScalarHandler(provider)
 {
-  console.log("Adding scalar handler for " + provider.name);
-
   provider.handler =
     async (mibRequest) =>
     {
@@ -142,6 +140,7 @@ function addIfTableHandler(provider)
   let             populate =
     async (bVirgin) =>
     {
+      let             rowIndexes;
       let             columns;
       const           entries = await linuxLib.getIfTable();
 
@@ -150,12 +149,11 @@ function addIfTableHandler(provider)
       // now-non-existent ones will not be returned
       if (! bVirgin)
       {
-        columns = mib.getTableColumnCells(provider.name, 0, true);
-        if (columns)
-          columns.forEach(
-            ( [ rowIndex, columnValues ] ) =>
+        [ rowIndexes ] = mib.getTableColumnCells(provider.name, 1, true);
+        if (rowIndexes)
+          rowIndexes.forEach(
+            (rowIndex) =>
             {
-console.log("Deleting row with index ", rowIndex);
               mib.deleteTableRow(provider.name, rowIndex);
             });
       }
@@ -188,7 +186,6 @@ console.log("Deleting row with index ", rowIndex);
           row.push(entry.ifOutQLen);
           row.push(entry.ifSpecific);
 
-console.log("Adding row", row);
           mib.addTableRow(provider.name, row);
         });
     };
@@ -196,7 +193,7 @@ console.log("Adding row", row);
   provider.handler =
     async (mibRequest) =>
     {
-//      await populate();
+      await populate();
       mibRequest.done();
     };
   
