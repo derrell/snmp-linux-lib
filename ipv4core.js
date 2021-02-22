@@ -734,97 +734,14 @@ class SnmpLinuxLib
   }
 
   /*
-   * Retrieve all information available from /proc/net/snmp
-   */
-  async getNetSnmpInfo()
-  {
-    let             heading;
-    let             fieldNames;
-    let             info = {};
-    let             bDefinition = true;
-
-    return Promise.resolve()
-      .then(() => fsp.readFile("/proc/net/snmp"))
-      .then((content) => content.toString().split("\n"))
-      .then(
-        (lines) =>
-        {
-          lines.forEach(
-            (line) =>
-            {
-              let             thisHeading;
-              let             fieldValues;
-
-              // An empty line signifies the end
-              line = line.trim();
-              if (line.length === 0)
-              {
-                return;
-              }
-
-              // A definition line looks like:
-              // Ip: Forwarding DefaultTTL InReceives ...
-              //
-              // A value line looks like:
-              // Ip: 1 64 87367079 ...
-              if (bDefinition)
-              {
-                [ heading, fieldNames ] = line.split(/: */);
-                fieldNames = fieldNames.split(" ");
-              }
-              else
-              {
-                [ thisHeading, fieldValues ] = line.split(/: */);
-
-                // We expect this heading to be the same as the one in
-                // the definition.
-                if (thisHeading != heading)
-                {
-                  throw new Error(
-                    `Unexpected heading ${thisHeading}; expected ${heading}`);
-                }
-
-                fieldValues = fieldValues.split(" ");
-
-                // We expect the number of fieldValues to match the
-                // number of fieldNames
-                if (fieldValues.length != fieldNames.length)
-                {
-                  throw new Error(
-                    [
-                      "Number of field names in ",
-                      JSON.stringify(fieldNames),
-                      " does not match number of values in ",
-                      JSON.stringify(fieldValues)
-                    ].join(""));
-                }
-
-                // Fill in the info map for this heading
-                info[heading] = {};
-                fieldNames.forEach(
-                  (name, i) =>
-                  {
-                    info[heading][name] = fieldValues[i];
-                  });
-              }
-
-              bDefinition = ! bDefinition;
-            });
-
-          return info;
-        });
-  }
-
-
-  /*
    * The total number of input datagrams received from interfaces, including
    * those received in error.
    */
   async getIpInReceives()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.InReceives);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.InReceives);
   }
 
   /*
@@ -836,8 +753,8 @@ class SnmpLinuxLib
   async getIpInHdrErrors()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.InHdrErrors);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.InHdrErrors);
   }
 
   /*
@@ -852,8 +769,8 @@ class SnmpLinuxLib
   async getIpInAddrErrors()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.InAddrErrors);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.InAddrErrors);
   }
 
   /*
@@ -867,8 +784,8 @@ class SnmpLinuxLib
   async getIpForwDatagrams()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.ForwDatagrams);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.ForwDatagrams);
   }
 
   /*
@@ -878,8 +795,8 @@ class SnmpLinuxLib
   async getIpInUnknownProtos()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.InUnknownProtos);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.InUnknownProtos);
   }
 
   /*
@@ -891,8 +808,8 @@ class SnmpLinuxLib
   async getIpInDiscards()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.InDiscards);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.InDiscards);
   }
 
   /*
@@ -902,8 +819,8 @@ class SnmpLinuxLib
   async getIpInDelivers()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.InDelivers);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.InDelivers);
   }
 
   /*
@@ -914,8 +831,8 @@ class SnmpLinuxLib
   async getIpOutRequests()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.OutRequests);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.OutRequests);
   }
 
   /*
@@ -928,8 +845,8 @@ class SnmpLinuxLib
   async getIpOutDiscards()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.OutDiscards);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.OutDiscards);
   }
 
   /*
@@ -942,8 +859,8 @@ class SnmpLinuxLib
   async getIpOutNoRoutes()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.OutNoRoutes);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.OutNoRoutes);
   }
 
   /*
@@ -953,8 +870,8 @@ class SnmpLinuxLib
   async getIpReasmTimeout()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.ReasmTimeout);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.ReasmTimeout);
   }
 
   /*
@@ -964,8 +881,8 @@ class SnmpLinuxLib
   async getIpReasmReqds()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.ReasmReqds);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.ReasmReqds);
   }
 
   /*
@@ -974,8 +891,8 @@ class SnmpLinuxLib
   async getIpReasmOKs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.ReasmOKs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.ReasmOKs);
   }
 
   /*
@@ -988,8 +905,8 @@ class SnmpLinuxLib
   async getIpReasmFails()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.ReasmFails);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.ReasmFails);
   }
 
   /*
@@ -999,8 +916,8 @@ class SnmpLinuxLib
   async getIpFragOKs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.FragOKs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.FragOKs);
   }
 
   /*
@@ -1011,8 +928,8 @@ class SnmpLinuxLib
   async getIpFragFails()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.FragFails);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.FragFails);
   }
 
   /*
@@ -1022,8 +939,8 @@ class SnmpLinuxLib
   async getIpFragCreates()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Ip.FragCreates);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Ip.FragCreates);
   }
 
 
@@ -1459,6 +1376,8 @@ class SnmpLinuxLib
    */
   async getIpRoutingDiscards()
   {
+    // TODO: Is there such a value on Linux?
+    return 0;
   }
 
 
@@ -1478,8 +1397,8 @@ class SnmpLinuxLib
   async getIcmpInMsgs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InMsgs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InMsgs);
   }
 
   /*
@@ -1489,8 +1408,8 @@ class SnmpLinuxLib
   async getIcmpInErrors()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InErrors);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InErrors);
   }
 
   /*
@@ -1499,8 +1418,8 @@ class SnmpLinuxLib
   async getIcmpInDestUnreachs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InDestUnreachs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InDestUnreachs);
   }
 
   /*
@@ -1509,8 +1428,8 @@ class SnmpLinuxLib
   async getIcmpInTimeExcds()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InTimeExcds);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InTimeExcds);
   }
 
   /*
@@ -1519,8 +1438,8 @@ class SnmpLinuxLib
   async getIcmpInParmProbs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InParmProbs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InParmProbs);
   }
 
   /*
@@ -1529,8 +1448,8 @@ class SnmpLinuxLib
   async getIcmpInSrcQuenchs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InSrcQuenchs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InSrcQuenchs);
   }
 
   /*
@@ -1539,8 +1458,8 @@ class SnmpLinuxLib
   async getIcmpInRedirects()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InRedirects);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InRedirects);
   }
 
   /*
@@ -1549,8 +1468,8 @@ class SnmpLinuxLib
   async getIcmpInEchos()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InEchos);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InEchos);
   }
 
   /*
@@ -1559,8 +1478,8 @@ class SnmpLinuxLib
   async getIcmpInEchoReps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InEchoReps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InEchoReps);
   }
 
   /*
@@ -1569,8 +1488,8 @@ class SnmpLinuxLib
   async getIcmpInTimestamps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InTimestamps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InTimestamps);
   }
 
   /*
@@ -1579,8 +1498,8 @@ class SnmpLinuxLib
   async getIcmpInTimestampReps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.InTimestampReps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.InTimestampReps);
   }
 
   /*
@@ -1589,8 +1508,8 @@ class SnmpLinuxLib
   async getIcmpInAddrMasks()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.inAddrMasks);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.inAddrMasks);
   }
 
   /*
@@ -1599,8 +1518,8 @@ class SnmpLinuxLib
   async getIcmpInAddrMaskReps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.inAddrMaskReps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.inAddrMaskReps);
   }
 
   /*
@@ -1610,8 +1529,8 @@ class SnmpLinuxLib
   async getIcmpOutMsgs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutMsgs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutMsgs);
   }
 
   /*
@@ -1624,8 +1543,8 @@ class SnmpLinuxLib
   async getIcmpOutErrors()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutErrors);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutErrors);
   }
 
   /*
@@ -1634,8 +1553,8 @@ class SnmpLinuxLib
   async getIcmpOutDestUnreachs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutDestUnreachs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutDestUnreachs);
   }
 
   /*
@@ -1644,8 +1563,8 @@ class SnmpLinuxLib
   async getIcmpOutTimeExcds()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutTimeExcds);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutTimeExcds);
   }
 
   /*
@@ -1654,8 +1573,8 @@ class SnmpLinuxLib
   async getIcmpOutParmProbs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutParmProbs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutParmProbs);
   }
 
   /*
@@ -1664,8 +1583,8 @@ class SnmpLinuxLib
   async getIcmpOutSrcQuenchs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutSrcQuenchs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutSrcQuenchs);
   }
 
   /*
@@ -1675,8 +1594,8 @@ class SnmpLinuxLib
   async getIcmpOutRedirects()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutRedirects);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutRedirects);
   }
 
   /*
@@ -1685,8 +1604,8 @@ class SnmpLinuxLib
   async getIcmpOutEchos()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutEchos);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutEchos);
   }
 
   /*
@@ -1695,8 +1614,8 @@ class SnmpLinuxLib
   async getIcmpOutEchoReps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutEchoReps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutEchoReps);
   }
 
   /*
@@ -1705,8 +1624,8 @@ class SnmpLinuxLib
   async getIcmpOutTimestamps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutTimestamps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutTimestamps);
   }
 
   /*
@@ -1715,8 +1634,8 @@ class SnmpLinuxLib
   async getIcmpOutTimestampReps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutTimestampReps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutTimestampReps);
   }
 
   /*
@@ -1725,8 +1644,8 @@ class SnmpLinuxLib
   async getIcmpOutAddrMasks()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutAddrMasks);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutAddrMasks);
   }
 
   /*
@@ -1735,8 +1654,8 @@ class SnmpLinuxLib
   async getIcmpOutAddrMaskReps()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Icmp.OutAddrMaskReps);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Icmp.OutAddrMaskReps);
   }
 
 
@@ -1760,8 +1679,8 @@ class SnmpLinuxLib
   async getTcpRtoAlgorithm()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.RtoAlgorithm);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.RtoAlgorithm);
   }
 
   /*
@@ -1775,8 +1694,8 @@ class SnmpLinuxLib
   async getTcpRtoMin()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.RtoMin);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.RtoMin);
   }
 
   /*
@@ -1790,8 +1709,8 @@ class SnmpLinuxLib
   async getTcpRtoMax()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.RtoMax);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.RtoMax);
   }
 
   /*
@@ -1802,8 +1721,8 @@ class SnmpLinuxLib
   async getTcpMaxConn()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.MaxConn);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.MaxConn);
   }
 
   /*
@@ -1813,8 +1732,8 @@ class SnmpLinuxLib
   async getTcpActiveOpens()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.ActiveOpens);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.ActiveOpens);
   }
 
   /*
@@ -1824,8 +1743,8 @@ class SnmpLinuxLib
   async getTcpPassiveOpens()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.PassiveOpens);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.PassiveOpens);
   }
 
   /*
@@ -1837,8 +1756,8 @@ class SnmpLinuxLib
   async getTcpAttemptFails()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.AttemptFails);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.AttemptFails);
   }
 
   /*
@@ -1848,8 +1767,8 @@ class SnmpLinuxLib
   async getTcpEstabResets()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.EstabResets);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.EstabResets);
   }
 
   /*
@@ -1859,8 +1778,8 @@ class SnmpLinuxLib
   async getTcpCurrEstab()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.CurrEstab);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.CurrEstab);
   }
 
   /*
@@ -1871,8 +1790,8 @@ class SnmpLinuxLib
   async getTcpInSegs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.InSegs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.InSegs);
   }
 
   /*
@@ -1882,8 +1801,8 @@ class SnmpLinuxLib
   async getTcpOutSegs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.OutSegs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.OutSegs);
   }
 
   /*
@@ -1894,8 +1813,8 @@ class SnmpLinuxLib
   async getTcpRetransSegs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.RetransSegs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.RetransSegs);
   }
 
   /**
@@ -1954,8 +1873,8 @@ class SnmpLinuxLib
   async getTcpInErrs()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.InErrs);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.InErrs);
   }
 
   /*
@@ -1964,8 +1883,8 @@ class SnmpLinuxLib
   async getTcpOutRsts()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Tcp.OutRsts);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Tcp.OutRsts);
   }
 
 
@@ -1984,8 +1903,8 @@ class SnmpLinuxLib
   async getUdpInDatagrams()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Udp.InDatagrams);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Udp.InDatagrams);
   }
 
   /*
@@ -1995,8 +1914,8 @@ class SnmpLinuxLib
   async getUdpNoPorts()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Udp.NoPorts);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Udp.NoPorts);
   }
 
   /*
@@ -2006,8 +1925,8 @@ class SnmpLinuxLib
   async getUdpInErrors()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Udp.InErrors);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Udp.InErrors);
   }
 
   /*
@@ -2016,8 +1935,8 @@ class SnmpLinuxLib
   async getUdpOutDatagrams()
   {
     return Promise.resolve()
-      .then(() => this.getNetSnmpInfo())
-      .then((info) => info.Udp.OutDatagrams);
+      .then(() => getNetSnmpInfo())
+      .then((info) => +info.Udp.OutDatagrams);
   }
 
   /**
@@ -2134,6 +2053,87 @@ const TcpConnEntry_CONNECTION_STATE =
 
 
 
+/*
+ * Retrieve all information available from /proc/net/snmp
+ */
+async function getNetSnmpInfo()
+{
+  let             heading;
+  let             fieldNames;
+  let             info = {};
+  let             bDefinition = true;
+
+  return Promise.resolve()
+    .then(() => fsp.readFile("/proc/net/snmp"))
+    .then((content) => content.toString().split("\n"))
+    .then(
+      (lines) =>
+      {
+        lines.forEach(
+          (line) =>
+          {
+            let             thisHeading;
+            let             fieldValues;
+
+            // An empty line signifies the end
+            line = line.trim();
+            if (line.length === 0)
+            {
+              return;
+            }
+
+            // A definition line looks like:
+            // Ip: Forwarding DefaultTTL InReceives ...
+            //
+            // A value line looks like:
+            // Ip: 1 64 87367079 ...
+            if (bDefinition)
+            {
+              [ heading, fieldNames ] = line.split(/: */);
+              fieldNames = fieldNames.split(" ");
+            }
+            else
+            {
+              [ thisHeading, fieldValues ] = line.split(/: */);
+
+              // We expect this heading to be the same as the one in
+              // the definition.
+              if (thisHeading != heading)
+              {
+                throw new Error(
+                  `Unexpected heading ${thisHeading}; expected ${heading}`);
+              }
+
+              fieldValues = fieldValues.split(" ");
+
+              // We expect the number of fieldValues to match the
+              // number of fieldNames
+              if (fieldValues.length != fieldNames.length)
+              {
+                throw new Error(
+                  [
+                    "Number of field names in ",
+                    JSON.stringify(fieldNames),
+                    " does not match number of values in ",
+                    JSON.stringify(fieldValues)
+                  ].join(""));
+              }
+
+              // Fill in the info map for this heading
+              info[heading] = {};
+              fieldNames.forEach(
+                (name, i) =>
+                {
+                  info[heading][name] = fieldValues[i];
+                });
+            }
+
+            bDefinition = ! bDefinition;
+          });
+
+        return info;
+      });
+}
 
 /**
  * This function ensures that we have a constant mapping of interface
