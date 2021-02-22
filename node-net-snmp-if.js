@@ -27,7 +27,7 @@ module.exports = async function(
 {
   let             store;
   let             providers;
-  const           SnmpLinuxLib = require("./ipv4core");
+  const           SnmpLinuxLib = require("./core");
 
   // Retrieve the MIB from the provided agent
   mib = agent.getMib();
