@@ -1,0 +1,23 @@
+{
+  "name": "snmp-linux-lib.git",
+  "version": "1.0.0",
+  "description": "Dynamic MIB support for Linux computers, etc.",
+  "main": "agent.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/derrell/snmp-linux-lib.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/derrell/snmp-linux-lib/issues"
+  },
+  "homepage": "https://github.com/derrell/snmp-linux-lib#readme",
+  "dependencies": {
+    "net-snmp": "^3.4.3"
+  }
+}
