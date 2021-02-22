@@ -48,7 +48,7 @@ async function agent()
   authorizer.addCommunity("public");
   mib = agent.getMib();
 
-  await require("./snmp-if")(
+  await require("./node-net-snmp-if")(
     agent,
     "Hello Linux!",
     "1.3.6.1.4.1.56827.1.1",
