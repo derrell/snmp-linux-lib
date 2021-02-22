@@ -38,6 +38,7 @@ module.exports = async function(
   providers = store.getProvidersForModule("RFC1213-MIB");
   mib.registerProviders(providers);
 
+  // Get access to the core library that provides results returned by snmp
   linuxLib = new SnmpLinuxLib(
     sysDescr,
     sysObjectID,
@@ -58,8 +59,8 @@ module.exports = async function(
         return;
       }
 
-      // We support all scalar providers in RFC1213-MIB except those
-      // whose names begin with "egp" and "snmp"
+      // Our core library supports all scalar providers in RFC1213-MIB
+      // except those whose names begin with "egp" and "snmp"
       if (provider.name.startsWith("egp") || provider.name.startsWith("snmp"))
       {
         return;
@@ -69,6 +70,8 @@ module.exports = async function(
       addScalarHandler(provider);
     });
 
+  // Add the table handlers
+  addIfTableHandler(mib.getProvider("ifEntry"));
 };
 
 /*
@@ -81,7 +84,7 @@ function getLinuxLibFunction(s)
 }
 
 /*
- * Add a handler to a scalar provider.
+ * Add a handler to a specified scalar provider.
  */
 function addScalarHandler(provider)
 {
@@ -91,7 +94,6 @@ function addScalarHandler(provider)
     async (mibRequest) =>
     {
       const           linuxLibFunction = getLinuxLibFunction(provider.name);
-console.log("Calling linuxLib function: " + linuxLibFunction);
       const           value = await linuxLib[linuxLibFunction]();
 
       mib.setScalarValue(provider.name, value);
@@ -130,4 +132,75 @@ console.log("Calling linuxLib function: " + linuxLibFunction);
   default :
     throw new Error("Unexpected object type: " + provider.scalarType);
   }
+}
+
+/*
+ * Add a handler for ifTable
+ */
+function addIfTableHandler(provider)
+{
+  let             populate =
+    async (bVirgin) =>
+    {
+      let             columns;
+      const           entries = await linuxLib.getIfTable();
+
+      // First clear out the existing table. This ensures that if
+      // there are fewer entries now than there were before, the
+      // now-non-existent ones will not be returned
+      if (! bVirgin)
+      {
+        columns = mib.getTableColumnCells(provider.name, 0, true);
+        if (columns)
+          columns.forEach(
+            ( [ rowIndex, columnValues ] ) =>
+            {
+console.log("Deleting row with index ", rowIndex);
+              mib.deleteTableRow(provider.name, rowIndex);
+            });
+      }
+
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.ifIndex);
+          row.push(entry.ifDescr);
+          row.push(entry.ifType);
+          row.push(entry.ifMtu);
+          row.push(entry.ifSpeed);
+          row.push(entry.ifPhysAddress);
+          row.push(entry.ifAdminStatus);
+          row.push(entry.ifOperStatus);
+          row.push(entry.ifLastChange);
+          row.push(entry.ifInOctets);
+          row.push(entry.ifInUcastPkts);
+          row.push(entry.ifInNUcastPkts);
+          row.push(entry.ifInDiscards);
+          row.push(entry.ifInErrors);
+          row.push(entry.ifInUnknownProtos);
+          row.push(entry.ifOutOctets);
+          row.push(entry.ifOutUcastPkts);
+          row.push(entry.ifOutNUcastPkts);
+          row.push(entry.ifOutDiscards);
+          row.push(entry.ifOutErrors);
+          row.push(entry.ifOutQLen);
+          row.push(entry.ifSpecific);
+
+console.log("Adding row", row);
+          mib.addTableRow(provider.name, row);
+        });
+    };
+
+  provider.handler =
+    async (mibRequest) =>
+    {
+//      await populate();
+      mibRequest.done();
+    };
+  
+  // Each table needs an initial value. Without it, the handler will
+  // never be called, when receiving a GET request
+  populate(true);
 }
