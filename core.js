@@ -19,6 +19,8 @@ let             pciIds;          // PCI ID database parsed into a map
 let             ifIndexMap = {}; // keyed by interface name
 let             nextIfIndex = 1; // unique value in ifIndexMap
 const           fsp = require("fs").promises;
+const           COUNTER_WRAP_AT = 0x100000000; // wrap Counter types at 32 bits
+const           GAUGE_MAX = 0xffffffff;        // clamp Guage at 32 bit max int
 
 class SnmpLinuxLib
 {
@@ -302,6 +304,7 @@ class SnmpLinuxLib
 
             return (
               [
+                `Device: ${ifName}`,
                 `Vendor: ${manufacturer}`,
                 `Device: ${deviceName}`,
                 `Rev : ${revision}`
@@ -382,8 +385,8 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() => fsp.readFile(`/sys/class/net/${ifName}/speed`))
         .then(v => speed = +v.toString().trim())
-        .catch((e) => speed = 100) // in case it's not available
-        .then(() => speed);
+        .catch((e) => speed = 4294967295) // in case it's not available
+        .then(() => Math.min(speed < 0 ? 4294967295 : speed), GAUGE_MAX);
     };
 
     /*
@@ -396,7 +399,16 @@ class SnmpLinuxLib
     {
       return Promise.resolve()
         .then(() => fsp.readFile(`/sys/class/net/${ifName}/address`))
-        .then(v => v.toString().trim());
+        .then(
+          v =>
+          {
+            return Buffer.from(
+              v.toString()
+                .trim()
+                .replace(/^$/, "00:00:00:00:00:00")
+                .split(":")
+                .map((s) => parseInt(s, 16)));
+          });
     };
 
     /*
@@ -440,7 +452,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/rx_bytes`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -460,7 +472,7 @@ class SnmpLinuxLib
             let             rx_packets = +results.shift().toString().trim();
             let             multicast  = +results.shift().toString().trim();
 
-            return rx_packets - multicast;
+            return (rx_packets - multicast) % COUNTER_WRAP_AT;
           });
     };
 
@@ -473,7 +485,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/multicast`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -495,7 +507,7 @@ class SnmpLinuxLib
             let         rx_dropped = +results.shift().toString().trim();
             let         rx_missed_errors  = +results.shift().toString().trim();
 
-            return rx_dropped + rx_missed_errors;
+            return (rx_dropped + rx_missed_errors) % COUNTER_WRAP_AT;
           });
     };
 
@@ -508,7 +520,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/rx_errors`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -520,7 +532,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/rx_dropped`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -532,7 +544,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_bytes`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -545,7 +557,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_packets`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -556,7 +568,7 @@ class SnmpLinuxLib
      */
     let             ifOutNUcastPkts     = async () =>
     {
-      return 0;                 // TODO: Is this number available anyplace?
+      return 0 % COUNTER_WRAP_AT; // TODO: Is this number available anyplace?
     };
 
     /*
@@ -570,7 +582,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_dropped`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -582,7 +594,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/statistics/tx_errors`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim() % COUNTER_WRAP_AT);
     };
 
     /*
@@ -593,7 +605,7 @@ class SnmpLinuxLib
       return Promise.resolve()
         .then(() =>
           fsp.readFile(`/sys/class/net/${ifName}/tx_queue_len`))
-        .then(v => +v.toString().trim());
+        .then(v => Math.min(+v.toString().trim(), GAUGE_MAX));
     };
 
     let             ifSpecific          = async () =>
@@ -741,7 +753,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.InReceives);
+      .then((info) => +info.Ip.InReceives % COUNTER_WRAP_AT);
   }
 
   /*
@@ -754,7 +766,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.InHdrErrors);
+      .then((info) => +info.Ip.InHdrErrors % COUNTER_WRAP_AT);
   }
 
   /*
@@ -770,7 +782,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.InAddrErrors);
+      .then((info) => +info.Ip.InAddrErrors % COUNTER_WRAP_AT);
   }
 
   /*
@@ -785,7 +797,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.ForwDatagrams);
+      .then((info) => +info.Ip.ForwDatagrams % COUNTER_WRAP_AT);
   }
 
   /*
@@ -796,7 +808,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.InUnknownProtos);
+      .then((info) => +info.Ip.InUnknownProtos % COUNTER_WRAP_AT);
   }
 
   /*
@@ -809,7 +821,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.InDiscards);
+      .then((info) => +info.Ip.InDiscards % COUNTER_WRAP_AT);
   }
 
   /*
@@ -820,7 +832,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.InDelivers);
+      .then((info) => +info.Ip.InDelivers % COUNTER_WRAP_AT);
   }
 
   /*
@@ -832,7 +844,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.OutRequests);
+      .then((info) => +info.Ip.OutRequests % COUNTER_WRAP_AT);
   }
 
   /*
@@ -846,7 +858,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.OutDiscards);
+      .then((info) => +info.Ip.OutDiscards % COUNTER_WRAP_AT);
   }
 
   /*
@@ -860,7 +872,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.OutNoRoutes);
+      .then((info) => +info.Ip.OutNoRoutes % COUNTER_WRAP_AT);
   }
 
   /*
@@ -882,7 +894,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.ReasmReqds);
+      .then((info) => +info.Ip.ReasmReqds % COUNTER_WRAP_AT);
   }
 
   /*
@@ -892,7 +904,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.ReasmOKs);
+      .then((info) => +info.Ip.ReasmOKs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -906,7 +918,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.ReasmFails);
+      .then((info) => +info.Ip.ReasmFails % COUNTER_WRAP_AT);
   }
 
   /*
@@ -917,7 +929,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.FragOKs);
+      .then((info) => +info.Ip.FragOKs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -929,7 +941,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.FragFails);
+      .then((info) => +info.Ip.FragFails % COUNTER_WRAP_AT);
   }
 
   /*
@@ -940,7 +952,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Ip.FragCreates);
+      .then((info) => +info.Ip.FragCreates % COUNTER_WRAP_AT);
   }
 
 
@@ -1377,7 +1389,7 @@ class SnmpLinuxLib
   async getIpRoutingDiscards()
   {
     // TODO: Is there such a value on Linux?
-    return 0;
+    return 0 % COUNTER_WRAP_AT;
   }
 
 
@@ -1398,7 +1410,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InMsgs);
+      .then((info) => +info.Icmp.InMsgs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1409,7 +1421,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InErrors);
+      .then((info) => +info.Icmp.InErrors % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1419,7 +1431,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InDestUnreachs);
+      .then((info) => +info.Icmp.InDestUnreachs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1429,7 +1441,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InTimeExcds);
+      .then((info) => +info.Icmp.InTimeExcds % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1439,7 +1451,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InParmProbs);
+      .then((info) => +info.Icmp.InParmProbs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1449,7 +1461,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InSrcQuenchs);
+      .then((info) => +info.Icmp.InSrcQuenchs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1459,7 +1471,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InRedirects);
+      .then((info) => +info.Icmp.InRedirects % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1469,7 +1481,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InEchos);
+      .then((info) => +info.Icmp.InEchos % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1479,7 +1491,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InEchoReps);
+      .then((info) => +info.Icmp.InEchoReps % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1489,7 +1501,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InTimestamps);
+      .then((info) => +info.Icmp.InTimestamps % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1499,7 +1511,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.InTimestampReps);
+      .then((info) => +info.Icmp.InTimestampReps % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1509,7 +1521,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.inAddrMasks);
+      .then((info) => +info.Icmp.inAddrMasks % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1519,7 +1531,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.inAddrMaskReps);
+      .then((info) => +info.Icmp.inAddrMaskReps % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1530,7 +1542,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutMsgs);
+      .then((info) => +info.Icmp.OutMsgs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1544,7 +1556,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutErrors);
+      .then((info) => +info.Icmp.OutErrors % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1554,7 +1566,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutDestUnreachs);
+      .then((info) => +info.Icmp.OutDestUnreachs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1564,7 +1576,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutTimeExcds);
+      .then((info) => +info.Icmp.OutTimeExcds % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1574,7 +1586,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutParmProbs);
+      .then((info) => +info.Icmp.OutParmProbs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1584,7 +1596,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutSrcQuenchs);
+      .then((info) => +info.Icmp.OutSrcQuenchs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1595,7 +1607,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutRedirects);
+      .then((info) => +info.Icmp.OutRedirects % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1605,7 +1617,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutEchos);
+      .then((info) => +info.Icmp.OutEchos % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1615,7 +1627,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutEchoReps);
+      .then((info) => +info.Icmp.OutEchoReps % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1625,7 +1637,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutTimestamps);
+      .then((info) => +info.Icmp.OutTimestamps % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1635,7 +1647,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutTimestampReps);
+      .then((info) => +info.Icmp.OutTimestampReps % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1645,7 +1657,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutAddrMasks);
+      .then((info) => +info.Icmp.OutAddrMasks % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1655,7 +1667,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Icmp.OutAddrMaskReps);
+      .then((info) => +info.Icmp.OutAddrMaskReps % COUNTER_WRAP_AT);
   }
 
 
@@ -1733,7 +1745,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.ActiveOpens);
+      .then((info) => +info.Tcp.ActiveOpens % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1744,7 +1756,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.PassiveOpens);
+      .then((info) => +info.Tcp.PassiveOpens % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1757,7 +1769,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.AttemptFails);
+      .then((info) => +info.Tcp.AttemptFails % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1768,7 +1780,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.EstabResets);
+      .then((info) => +info.Tcp.EstabResets % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1779,7 +1791,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.CurrEstab);
+      .then((info) => Math.min(+info.Tcp.CurrEstab, GAUGE_MAX));
   }
 
   /*
@@ -1791,7 +1803,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.InSegs);
+      .then((info) => +info.Tcp.InSegs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1802,7 +1814,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.OutSegs);
+      .then((info) => +info.Tcp.OutSegs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1814,7 +1826,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.RetransSegs);
+      .then((info) => +info.Tcp.RetransSegs % COUNTER_WRAP_AT);
   }
 
   /**
@@ -1874,7 +1886,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.InErrs);
+      .then((info) => +info.Tcp.InErrs % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1884,7 +1896,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Tcp.OutRsts);
+      .then((info) => +info.Tcp.OutRsts % COUNTER_WRAP_AT);
   }
 
 
@@ -1904,7 +1916,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Udp.InDatagrams);
+      .then((info) => +info.Udp.InDatagrams % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1915,7 +1927,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Udp.NoPorts);
+      .then((info) => +info.Udp.NoPorts % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1926,7 +1938,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Udp.InErrors);
+      .then((info) => +info.Udp.InErrors % COUNTER_WRAP_AT);
   }
 
   /*
@@ -1936,7 +1948,7 @@ class SnmpLinuxLib
   {
     return Promise.resolve()
       .then(() => getNetSnmpInfo())
-      .then((info) => +info.Udp.OutDatagrams);
+      .then((info) => +info.Udp.OutDatagrams % COUNTER_WRAP_AT);
   }
 
   /**
