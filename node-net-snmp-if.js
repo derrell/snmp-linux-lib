@@ -72,6 +72,8 @@ module.exports = async function(
 
   // Add the table handlers
   addIfTableHandler(mib.getProvider("ifEntry"));
+  addIpAddrTableHandler(mib.getProvider("ipAddrEntry"));
+  addIpRouteTableHandler(mib.getProvider("ipRouteEntry"));
 };
 
 /*
@@ -146,7 +148,7 @@ function addIfTableHandler(provider)
 
       // First clear out the existing table. This ensures that if
       // there are fewer entries now than there were before, the
-      // now-non-existent ones will not be returned
+      // now-nonexistent ones will not be returned
       if (! bVirgin)
       {
         [ rowIndexes ] = mib.getTableColumnCells(provider.name, 1, true);
@@ -197,6 +199,118 @@ function addIfTableHandler(provider)
       mibRequest.done();
     };
   
+  // Each table needs an initial value. Without it, the handler will
+  // never be called, when receiving a GET request
+  populate(true);
+}
+
+/*
+ * Add a handler for ipAddrTable
+ */
+function addIpAddrTableHandler(provider)
+{
+  let             populate =
+    async (bVirgin) =>
+    {
+      let             columns;
+      const           entries = await linuxLib.getIpAddrTable();
+
+      // First clear out the existing table. This ensures that if
+      // there are fewer entries now than there were before, the
+      // now-nonexistent ones will not be returned
+      if (! bVirgin)
+      {
+        columns = mib.getTableColumnCells(provider.name, 0, true);
+        if (columns)
+          columns.forEach(
+            ( [ rowIndex, columnValues ] ) =>
+            {
+              mib.deleteTableRow(provider.name, rowIndex);
+            });
+      }
+
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.ipAdEntAddr);
+          row.push(entry.ipAdEntIfIndex);
+          row.push(entry.ipAdEntNetMask);
+          row.push(entry.ipAdEntBcastAddr);
+          row.push(entry.ipAdEntReasmMaxSize);
+
+          mib.addTableRow(provider.name, row);
+        });
+    };
+
+  provider.handler =
+    async (mibRequest) =>
+    {
+      await populate();
+      mibRequest.done();
+    };
+
+  // Each table needs an initial value. Without it, the handler will
+  // never be called, when receiving a GET request
+  populate(true);
+}
+
+/*
+ * Add a handler for ipAddrTable
+ */
+function addIpRouteTableHandler(provider)
+{
+  let             populate =
+    async (bVirgin) =>
+    {
+      let             columns;
+      const           entries = await linuxLib.getIpRouteTable();
+
+      // First clear out the existing table. This ensures that if
+      // there are fewer entries now than there were before, the
+      // now-nonexistent ones will not be returned
+      if (! bVirgin)
+      {
+        columns = mib.getTableColumnCells(provider.name, 0, true);
+        if (columns)
+          columns.forEach(
+            ( [ rowIndex, columnValues ] ) =>
+            {
+              mib.deleteTableRow(provider.name, rowIndex);
+            });
+      }
+
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.destination);    // ipRouteDest
+          row.push(entry.interfaceIndex); // ipRouteIfIndex
+          row.push(entry.metric);         // ipRouteMetric1
+          row.push(-1);                   // ipRouteMetric2
+          row.push(-1);                   // ipRouteMetric3
+          row.push(-1);                   // ipRouteMetric4
+          row.push(entry.gateway);        // ipRouteNextHop
+          row.push(1);                    // ipRouteType
+          row.push(1);                    // ipRouteProto
+          row.push(0);                    // ipRouteAge
+          row.push(entry.mask);           // ipRouteMask
+          row.push(-1);                   // ipRouteMetric5
+          row.push("0.0");                // ipRouteInfo
+
+          mib.addTableRow(provider.name, row);
+        });
+    };
+
+  provider.handler =
+    async (mibRequest) =>
+    {
+      await populate();
+      mibRequest.done();
+    };
+
   // Each table needs an initial value. Without it, the handler will
   // never be called, when receiving a GET request
   populate(true);

@@ -1111,8 +1111,16 @@ class SnmpLinuxLib
         ip.push(octet);
       }
 
+      // This object is defined to return only the low-order bit.
+      // What is the point of accessing only the low-order bit of the
+      // broadcast address???
+      return ip[3] & 0x01;
+
+
+/*
       // Turn it back into IP address string format
       return ip.join(".");
+*/
     };
 
     /*
@@ -1365,10 +1373,10 @@ class SnmpLinuxLib
         {
           let result =
             {
-              ipNetToMediaIfIndex    : results.shift(),
-              ipNetToMediaPhysddress : results.shift(),
-              ipNetToMediaNetAddress : results.shift(),
-              ipNetToMediaType       : results.shift()
+              ipNetToMediaIfIndex     : results.shift(),
+              ipNetToMediaPhysAddress : results.shift(),
+              ipNetToMediaNetAddress  : results.shift(),
+              ipNetToMediaType        : results.shift()
             };
 
           return result;
@@ -2278,8 +2286,8 @@ async function getRouteInfo4()
             // Add a route entry with the fields identified
             entry =
               {
-                interface      : fields[0],
-                interfaceIndex : ifIndexMap[fields.shift()],
+                interface      : fields[0], // also used for interfaceIndex
+                interfaceIndex : ifIndexMap[fields.shift()], // [interface]
                 destination    : hexToIp4(fields.shift()),
                 gateway        : hexToIp4(fields.shift()),
                 flags          : parseInt(fields.shift(), 16),
