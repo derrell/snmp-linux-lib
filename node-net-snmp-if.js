@@ -74,6 +74,7 @@ module.exports = async function(
   addIfTableHandler(mib.getProvider("ifEntry"));
   addIpAddrTableHandler(mib.getProvider("ipAddrEntry"));
   addIpRouteTableHandler(mib.getProvider("ipRouteEntry"));
+  addIpNetToMediaTableHandler(mib.getProvider("ipNetToMediaEntry"));
 };
 
 /*
@@ -257,7 +258,7 @@ function addIpAddrTableHandler(provider)
 }
 
 /*
- * Add a handler for ipAddrTable
+ * Add a handler for ipRouteTable
  */
 function addIpRouteTableHandler(provider)
 {
@@ -299,6 +300,57 @@ function addIpRouteTableHandler(provider)
           row.push(entry.mask);           // ipRouteMask
           row.push(-1);                   // ipRouteMetric5
           row.push("0.0");                // ipRouteInfo
+
+          mib.addTableRow(provider.name, row);
+        });
+    };
+
+  provider.handler =
+    async (mibRequest) =>
+    {
+      await populate();
+      mibRequest.done();
+    };
+
+  // Each table needs an initial value. Without it, the handler will
+  // never be called, when receiving a GET request
+  populate(true);
+}
+
+/*
+ * Add a handler for ipNetToMediaTable
+ */
+function addIpNetToMediaTableHandler(provider)
+{
+  let             populate =
+    async (bVirgin) =>
+    {
+      let             columns;
+      const           entries = await linuxLib.getIpNetToMediaTable();
+
+      // First clear out the existing table. This ensures that if
+      // there are fewer entries now than there were before, the
+      // now-nonexistent ones will not be returned
+      if (! bVirgin)
+      {
+        columns = mib.getTableColumnCells(provider.name, 0, true);
+        if (columns)
+          columns.forEach(
+            ( [ rowIndex, columnValues ] ) =>
+            {
+              mib.deleteTableRow(provider.name, rowIndex);
+            });
+      }
+
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.ipNetToMediaIfIndex);
+          row.push(entry.ipNetToMediaPhysAddress);
+          row.push(entry.ipNetToMediaNetAddress);
+          row.push(entry.ipNetToMediaType);
 
           mib.addTableRow(provider.name, row);
         });
