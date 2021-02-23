@@ -12,38 +12,35 @@
 'use strict';
 
 
+/*
+ * Run this, and then walk the tree with:
+ *
+ * snmpwalk -v2c -c public localhost:1611 1.3.6.1.2.1
+ */
 async function startAgent()
 {
   let             mib;
   let             agent;
-  let             callback;
   let             authorizer;
-  let             snmpOptions;
   let             scalarProvider;
   let             tableProvider;
   const           snmp = require ("net-snmp");
   const           fs = require("fs");
 
-  snmpOptions =
+  agent = snmp.createAgent(
     {
       port: 1611,
       address: null,
       accessControlModelType: snmp.AccessControlModelType.Simple
-    };
-
-  callback =
+    },
     (error, data) =>
-  {
-    if (error)
     {
-      console.error(error);
-      return;
-    }
-
-//    console.log(JSON.stringify(data.pdu.varbinds, null, 2));
-  };
-
-  agent = snmp.createAgent(snmpOptions, callback);
+      if (error)
+      {
+        console.error(error);
+        return;
+      }
+    });
   authorizer = agent.getAuthorizer();
   authorizer.addCommunity("public");
   mib = agent.getMib();
