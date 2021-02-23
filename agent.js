@@ -12,7 +12,7 @@
 'use strict';
 
 
-async function agent()
+async function startAgent()
 {
   let             mib;
   let             agent;
@@ -58,4 +58,4 @@ async function agent()
     Math.pow(2, 3-1) + Math.pow(2, 4-1));            // layer 3+4
 }
 
-(async () => await agent())();
+(async () => await startAgent())();

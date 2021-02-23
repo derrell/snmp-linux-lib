@@ -1129,6 +1129,7 @@ class SnmpLinuxLib
      */
     let             ipAdEntReasmMaxSize = async () =>
     {
+      return 65535;             // TODO: how do we determine this?
     };
 
     return Promise.all(
