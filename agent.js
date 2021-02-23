@@ -56,16 +56,6 @@ async function agent()
     "Agent example",
     "Testing lab",
     Math.pow(2, 3-1) + Math.pow(2, 4-1));            // layer 3+4
-
-/*
-  mib.dump(
-    {
-      leavesOnly: false,
-      showProviders: true,
-      showValues: true,
-      showTypes: true
-    });
-*/
 }
 
 (async () => await agent())();
