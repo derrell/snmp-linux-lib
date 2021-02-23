@@ -75,6 +75,8 @@ module.exports = async function(
   addIpAddrTableHandler(mib.getProvider("ipAddrEntry"));
   addIpRouteTableHandler(mib.getProvider("ipRouteEntry"));
   addIpNetToMediaTableHandler(mib.getProvider("ipNetToMediaEntry"));
+  addTcpConnTableHandler(mib.getProvider("tcpConnEntry"));
+  addUdpTableHandler(mib.getProvider("udpEntry"));
 };
 
 /*
@@ -135,32 +137,58 @@ function addScalarHandler(provider)
   }
 }
 
+
 /*
- * Add a handler for ifTable
+ * Internal function for adding a table handler
  */
-function addIfTableHandler(provider)
+function _addTableHandler(provider, fAddEntries)
 {
   let             populate =
     async (bVirgin) =>
     {
-      let             rowIndexes;
       let             columns;
-      const           entries = await linuxLib.getIfTable();
 
       // First clear out the existing table. This ensures that if
       // there are fewer entries now than there were before, the
       // now-nonexistent ones will not be returned
       if (! bVirgin)
       {
-        [ rowIndexes ] = mib.getTableColumnCells(provider.name, 1, true);
-        if (rowIndexes)
-          rowIndexes.forEach(
-            (rowIndex) =>
+        columns = mib.getTableColumnCells(provider.name, 0, true);
+        if (columns)
+          columns.forEach(
+            ( [ rowIndex, columnValues ] ) =>
             {
               mib.deleteTableRow(provider.name, rowIndex);
             });
       }
 
+      // Call the table-specific function to add the data to comply
+      // with this request
+      await fAddEntries(provider);
+    };
+
+  provider.handler =
+    async (mibRequest) =>
+    {
+      await populate();
+      mibRequest.done();
+    };
+
+  // Each table needs an initial value. Without it, the handler will
+  // never be called, when receiving a GET request
+  populate(true);
+}
+
+/*
+ * Add a handler for ifTable
+ */
+function addIfTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
+    {
+      const           entries = await linuxLib.getIfTable();
       entries.forEach(
         (entry) =>
         {
@@ -191,18 +219,7 @@ function addIfTableHandler(provider)
 
           mib.addTableRow(provider.name, row);
         });
-    };
-
-  provider.handler =
-    async (mibRequest) =>
-    {
-      await populate();
-      mibRequest.done();
-    };
-  
-  // Each table needs an initial value. Without it, the handler will
-  // never be called, when receiving a GET request
-  populate(true);
+    });
 }
 
 /*
@@ -210,26 +227,11 @@ function addIfTableHandler(provider)
  */
 function addIpAddrTableHandler(provider)
 {
-  let             populate =
-    async (bVirgin) =>
+  _addTableHandler(
+    provider,
+    async () =>
     {
-      let             columns;
       const           entries = await linuxLib.getIpAddrTable();
-
-      // First clear out the existing table. This ensures that if
-      // there are fewer entries now than there were before, the
-      // now-nonexistent ones will not be returned
-      if (! bVirgin)
-      {
-        columns = mib.getTableColumnCells(provider.name, 0, true);
-        if (columns)
-          columns.forEach(
-            ( [ rowIndex, columnValues ] ) =>
-            {
-              mib.deleteTableRow(provider.name, rowIndex);
-            });
-      }
-
       entries.forEach(
         (entry) =>
         {
@@ -243,18 +245,7 @@ function addIpAddrTableHandler(provider)
 
           mib.addTableRow(provider.name, row);
         });
-    };
-
-  provider.handler =
-    async (mibRequest) =>
-    {
-      await populate();
-      mibRequest.done();
-    };
-
-  // Each table needs an initial value. Without it, the handler will
-  // never be called, when receiving a GET request
-  populate(true);
+    });
 }
 
 /*
@@ -262,26 +253,11 @@ function addIpAddrTableHandler(provider)
  */
 function addIpRouteTableHandler(provider)
 {
-  let             populate =
-    async (bVirgin) =>
+  _addTableHandler(
+    provider,
+    async () =>
     {
-      let             columns;
       const           entries = await linuxLib.getIpRouteTable();
-
-      // First clear out the existing table. This ensures that if
-      // there are fewer entries now than there were before, the
-      // now-nonexistent ones will not be returned
-      if (! bVirgin)
-      {
-        columns = mib.getTableColumnCells(provider.name, 0, true);
-        if (columns)
-          columns.forEach(
-            ( [ rowIndex, columnValues ] ) =>
-            {
-              mib.deleteTableRow(provider.name, rowIndex);
-            });
-      }
-
       entries.forEach(
         (entry) =>
         {
@@ -303,18 +279,7 @@ function addIpRouteTableHandler(provider)
 
           mib.addTableRow(provider.name, row);
         });
-    };
-
-  provider.handler =
-    async (mibRequest) =>
-    {
-      await populate();
-      mibRequest.done();
-    };
-
-  // Each table needs an initial value. Without it, the handler will
-  // never be called, when receiving a GET request
-  populate(true);
+    });
 }
 
 /*
@@ -322,26 +287,11 @@ function addIpRouteTableHandler(provider)
  */
 function addIpNetToMediaTableHandler(provider)
 {
-  let             populate =
-    async (bVirgin) =>
+  _addTableHandler(
+    provider,
+    async () =>
     {
-      let             columns;
       const           entries = await linuxLib.getIpNetToMediaTable();
-
-      // First clear out the existing table. This ensures that if
-      // there are fewer entries now than there were before, the
-      // now-nonexistent ones will not be returned
-      if (! bVirgin)
-      {
-        columns = mib.getTableColumnCells(provider.name, 0, true);
-        if (columns)
-          columns.forEach(
-            ( [ rowIndex, columnValues ] ) =>
-            {
-              mib.deleteTableRow(provider.name, rowIndex);
-            });
-      }
-
       entries.forEach(
         (entry) =>
         {
@@ -354,16 +304,55 @@ function addIpNetToMediaTableHandler(provider)
 
           mib.addTableRow(provider.name, row);
         });
-    };
+    });
+}
 
-  provider.handler =
-    async (mibRequest) =>
+/*
+ * Add a handler for tcpConnTable
+ */
+function addTcpConnTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
     {
-      await populate();
-      mibRequest.done();
-    };
+      const           entries = await linuxLib.getTcpConnTable();
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
 
-  // Each table needs an initial value. Without it, the handler will
-  // never be called, when receiving a GET request
-  populate(true);
+          row.push(entry.tcpConnState);
+          row.push(entry.tcpConnLocalAddress);
+          row.push(entry.tcpConnLocalPort);
+          row.push(entry.tcpConnRemAddress);
+          row.push(entry.tcpConnRemPort);
+
+          mib.addTableRow(provider.name, row);
+        });
+    });
+}
+
+
+/*
+ * Add a handler for udpTable
+ */
+async function addUdpTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
+    {
+      const           entries = await linuxLib.getUdpTable();
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.udpLocalAddress);
+          row.push(entry.udpLocalPort);
+
+          mib.addTableRow(provider.name, row);
+        });
+    });
 }

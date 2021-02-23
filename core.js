@@ -1290,7 +1290,7 @@ class SnmpLinuxLib
     let             addressInfo;
 
     // If we were called externally, `this` will be our class. If we
-    // were called from `getIpAddrTable`, above, `this` will be the
+    // were called from `getIpNetToMediaTable`, above, `this` will be the
     // already-ascertained address information. If the address info is
     // already available, we save ourselves a library call for each
     // entry.
@@ -1300,7 +1300,7 @@ class SnmpLinuxLib
     }
     else
     {
-      addressInfo = this; // already have addressInfo from getIpAddrTable
+      addressInfo = this; // already have addressInfo from getIpNetToMediaTable
     }
 
     // Get the information about this address
