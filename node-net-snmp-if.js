@@ -22,7 +22,7 @@ module.exports = async function(
   sysContact,
   sysName,
   sysLocation,
-  sysServices,
+  sysServices = Math.pow(2, 3-1) + Math.pow(2, 4-1), // layer 3+4,
   pciIdPath = "/usr/share/misc/pci.ids")
 {
   let             store;

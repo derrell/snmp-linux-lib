@@ -53,8 +53,7 @@ async function startAgent()
     "1.3.6.1.4.1.999999.1.1",
     "Derrell Lipman",
     "Agent example",
-    "Testing lab",
-    Math.pow(2, 3-1) + Math.pow(2, 4-1));            // layer 3+4
+    "Testing lab");
 }
 
 (async () => await startAgent())();
