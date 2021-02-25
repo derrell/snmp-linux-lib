@@ -304,7 +304,7 @@ class SnmpLinuxLib
 
             return (
               [
-                `Device: ${ifName}`,
+                `Interface: ${ifName}`,
                 `Vendor: ${manufacturer}`,
                 `Device: ${deviceName}`,
                 `Rev : ${revision}`
@@ -417,6 +417,7 @@ class SnmpLinuxLib
      */
     let             ifAdminStatus       = async () =>
     {
+      // TODO: How to determine if the interface is up or down?
       return 1;                 // 1=up 2=down 3=testing
     };
 
@@ -2035,6 +2036,387 @@ class SnmpLinuxLib
    *   getEgpNeighEventTrigger()
    *   getEgpAs()
    */
+
+  /*
+   * The indication of whether this entity is acting as an IPv6 router in
+   * respect to the forwarding of datagrams received by, but not addressed to,
+   * this entity. IPv6 routers forward datagrams. IPv6 hosts do not (except
+   * those source-routed via the host).
+   *
+   * Note that for some managed nodes, this object may take on only a subset
+   * of the values possible. Accordingly, it is appropriate for an agent to
+   * return a `wrongValue' response if a management station attempts to change
+   * this object to an inappropriate value.
+   */
+  async getIpv6Forwarding()
+  {
+    return Promise.resolve()
+      .then(() => fsp.readFile("/proc/sys/net/ipv6/conf/all/forwarding"))
+      .then(v => +v.toString().trim()) // file: 1=forwarding, 0=not-forwarding
+      .then(v => v ? 1 : 2);           // ret:  1=forwarding, 2=not-forwarding
+  }
+
+  /*
+   * The default value inserted into the Hop Limit field of the IPv6 header of
+   * datagrams originated at this entity, whenever a Hop Limit value is not
+   * supplied by the transport layer protocol.
+   */
+  async getIpv6DefaultHopLimit()
+  {
+    return Promise.resolve()
+      .then(() => fsp.readFile("/proc/sys/net/ipv6/conf/all/hop_limit"))
+      .then(v => +v.toString().trim());
+  }
+
+  /*
+   * The number of IPv6 interfaces (regardless of their current state) present
+   * on this system.
+   */
+  async getIpv6Interfaces()
+  {
+    return Promise.resolve()
+      .then(() => addIfIndexes())
+      .then((ifNames) => ifNames.length);
+  }
+
+  /*
+   * The value of sysUpTime at the time of the last insertion or removal of an
+   * entry in the ipv6IfTable. If the number of entries has been unchanged
+   * since the last re-initialization of the local network management
+   * subsystem, then this object contains a zero value.
+   */
+  async getIpv6IfTableLastChange()
+  {
+    return 0; // Assume interfaces came up before management system
+  }
+
+  /*
+   * The IPv6 Interfaces table contains information on the entity's
+   * internetwork-layer interfaces. An IPv6 interface constitutes a logical
+   * network layer attachment to the layer immediately below
+   *
+   * IPv6 including internet layer 'tunnels', such as tunnels over IPv4 or
+   * IPv6 itself.
+   */
+  async getIpv6IfTable()
+  {
+    // If we don't yet have the PCI database parsed, do it now.
+    if (! pciIds)
+    {
+      pciIds = await require("./parsePciIds")(this.pciIdPath);
+    }
+
+    return Promise.resolve()
+      .then(() => addIfIndexes())
+      .then((ifNames) =>
+        {
+          return Promise.all(
+            ifNames.map((ifName) =>
+              this.getIpv6IfEntry(ifName, ifIndexMap[ifName])));
+        });
+  }
+
+  /*
+   * An interface entry containing objects about a particular IPv6 interface.
+   */
+  async getIpv6IfEntry(ifName, index)
+  {
+    /*
+     * A unique value for each interface. Its value ranges between 1 and the
+     * value of ifNumber. The value for each interface must remain constant at
+     * least from one re-initialization of the entity's network management
+     * system to the next re- initialization.
+     */
+    let             ipv6IfIndex             = async () =>
+    {
+      // Have we already identified this interface index?
+      if (ifName in ifIndexMap)
+      {
+        // Yup. We can return it immediately.
+        return ifIndexMap[ifName];
+      }
+
+      // We need to enumerate all interfaces and get this one's index.
+      return Promise.resolve()
+        .then(() => addIfIndexes())
+        .then(() =>
+          {
+            // It'd better be there now
+            if (! (ifName in ifIndexMap))
+            {
+              throw new Error(`Interface ${ifName} does not exist`);
+            }
+
+            return ifIndexMap[ifName];
+          });
+    };
+
+    /*
+     * A textual string containing information about the interface. This
+     * string should include the name of the manufacturer, the product name
+     * and the version of the hardware interface.
+     */
+    let             ipv6IfDescr             = async () =>
+    {
+      let             vendor;
+      let             device;
+      let             revision;
+
+      // If we don't yet have the PCI database parsed, do it now.
+      if (! pciIds)
+      {
+        pciIds = await require("./parsePciIds")(this.pciIdPath);
+      }
+
+      return Promise.allSettled(
+        [
+          fsp.readFile(`/sys/class/net/${ifName}/device/vendor`),
+          fsp.readFile(`/sys/class/net/${ifName}/device/device`),
+          fsp.readFile(`/sys/class/net/${ifName}/device/revision`)
+        ])
+        .then(
+          (results) =>
+          {
+            let             manufacturer;
+            let             deviceName;
+            let             getValueOrUnknown =
+                () =>
+                {
+                  const           result = results.shift();
+
+                  if (result.status == "fulfilled")
+                  {
+                    return result.value.toString().trim();
+                  }
+
+                  return "Unknown";
+                };
+
+            // Get the vendor ID, deviceID, and revision. Attempt to
+            // convert vendor ID and device ID into their respective
+            // manufacturer and device name, if that information is
+            // available to us.
+            vendor = manufacturer = getValueOrUnknown().replace("0x", "");
+            try { manufacturer = pciIds[vendor].manufacturer; } catch (e) {};
+            device = deviceName = getValueOrUnknown().replace("0x", "");
+            try { deviceName = pciIds[vendor].devices[device]; } catch (e) {};
+            revision = getValueOrUnknown();
+
+            return (
+              [
+                `Interface: ${ifName}`,
+                `Vendor: ${manufacturer}`,
+                `Device: ${deviceName}`,
+                `Rev : ${revision}`
+              ].join(" | "));
+          });
+    };
+
+    /*
+     * This object identifies the protocol layer over which this network
+     * interface operates. If this network interface operates over the
+     * data-link layer, then the value of this object refers to an instance of
+     * ifIndex [6]. If this network interface operates over an IPv4 interface,
+     * the value of this object refers to an instance of ipAdEntAddr [3].
+     *
+     * If this network interface operates over another IPv6 interface, the
+     * value of this object refers to an instance of ipv6IfIndex. If this
+     * network interface is not currently operating over an active protocol
+     * layer, then the value of this object should be set to the OBJECT ID { 0
+     * 0 }.
+     */
+    let             ipv6IfLowerLayer    = async() =>
+    {
+      return "0.0";             // higher layer may want to modify this
+    };
+
+    /*
+     * The size of the largest IPv6 packet which can be sent/received on the
+     * interface, specified in octets.
+     */
+    let             ipv6IfEffectiveMtu  = async () =>
+    {
+      return Promise.resolve()
+        .then(() => fsp.readFile(`/proc/sys/net/ipv6/conf/${ifName}/mtu`))
+        .then(v => +v.toString().trim());
+    };
+
+    /*
+     * The size of the largest IPv6 datagram which this entity can re-assemble
+     * from incoming IPv6 fragmented datagrams received on this interface.
+     */
+    let             ipv6IfReasmMaxSize  = async () =>
+    {
+      return 65535;             // TODO: how do we determine this?
+    };
+
+    /*
+     * The Interface Identifier for this interface that is (at least) unique
+     * on the link this interface is attached to. The Interface Identifier is
+     * combined with an address prefix to form an interface address.
+     *
+     * By default, the Interface Identifier is autoconfigured according to the
+     * rules of the link type this interface is attached to.
+     */
+    let             ipv6IfIdentifier    = async () =>
+    {
+      // We choose to use the pyhsical (mac) address as the
+      // identifier, assuming the interface is attached to an 802.x
+      // link.
+      //
+      // TODO: determine how to select an identifier if the interface
+      // is attached to something other than an 802.x link
+      //
+      // TODO: if this implementation is changed, change the
+      // implementation of ipv6IdentifierLength too
+      return Promise.resolve()
+        .then(() => fsp.readFile(`/sys/class/net/${ifName}/address`))
+        .then(
+          v =>
+          {
+            return Buffer.from(
+              v.toString()
+                .trim()
+                .replace(/^$/, "00:00:00:00:00:00")
+                .split(":")
+                .map((s) => parseInt(s, 16)));
+          });
+    };
+
+    let             ipv6IfIdentifierLength = async () =>
+    {
+      // Since we chose to use the mac address as the identifier, the
+      // length (in bits) is fixed at 48 (6 bytes).
+      return 48;
+    };
+
+    /*
+     * The interface's physical address. For example, for an IPv6 interface
+     * attached to an 802.x link, this object normally contains a MAC address.
+     * Note that in some cases this address may differ from the address of the
+     * interface's protocol sub-layer. The interface's media-specific MIB must
+     * define the bit and byte ordering and the format of the value of this
+     * object. For interfaces which do not have such an address (e.g., a
+     * serial line), this object should contain an octet string of zero
+     * length.
+     */
+    let             ipv6IfPhysicalAddress = async () =>
+    {
+      return Promise.resolve()
+        .then(() => fsp.readFile(`/sys/class/net/${ifName}/address`))
+        .then(
+          v =>
+          {
+            return Buffer.from(
+              v.toString()
+                .trim()
+                .replace(/^$/, "00:00:00:00:00:00")
+                .split(":")
+                .map((s) => parseInt(s, 16)));
+          });
+    };
+
+    /*
+     * The desired state of the interface. When a managed system initializes,
+     * all IPv6 interfaces start with ipv6IfAdminStatus in the down(2) state.
+     * As a result of either explicit management action or per configuration
+     * information retained by the managed system, ipv6IfAdminStatus is then
+     * changed to the up(1) state (or remains in the down(2) state).
+     */
+    let             ipv6IfAdminStatus = async () =>
+    {
+      // TODO: How to determine if the interface is up or down?
+      return 1;                 // 1=up 2=down 3=testing
+    };
+    
+    /*
+     * The current operational state of the interface. The noIfIdentifier(3)
+     * state indicates that no valid Interface Identifier is assigned to the
+     * interface. This state usually indicates that the link-local interface
+     * address failed Duplicate Address Detection. If ipv6IfAdminStatus is
+     * down(2) then ipv6IfOperStatus should be down(2). If ipv6IfAdminStatus
+     * is changed to up(1) then ipv6IfOperStatus should change to up(1) if the
+     * interface is ready to transmit and receive network traffic; it should
+     * remain in the down(2) or noIfIdentifier(3) state if and only if there
+     * is a fault that prevents it from going to the up(1) state; it should
+     * remain in the notPresent(5) state if the interface has missing
+     * (typically, lower layer) components.
+     */
+    let             ipv6IfOperStatus  = async () =>
+    {
+      // TODO: How to determine the interface status?
+      return 1;  // 1=up 2=down 3=noIfIdentifier 4=unknown 5=otPresent
+    };
+
+    /*
+     * The value of sysUpTime at the time the interface entered its current
+     * operational state. If the current state was entered prior to the last
+     * re-initialization of the local network management subsystem, then this
+     * object contains a zero value.
+     */
+    let             ipv6IfLastChange = async () =>
+    {
+      return 0; // Assume interfaces came up before management system
+    };
+
+    return Promise.all(
+      [
+        ipv6IfIndex(),
+        ipv6IfDescr(),
+        ipv6IfLowerLayer(),
+        ipv6IfEffectiveMtu(),
+        ipv6IfReasmMaxSize(),
+        ipv6IfIdentifier(),
+        ipv6IfIdentifierLength(),
+        ipv6IfPhysicalAddress(),
+        ipv6IfAdminStatus(),
+        ipv6IfOperStatus(),
+        ipv6IfLastChange()
+      ])
+      .then((results) =>
+        {
+          let result =
+            {
+              ipv6IfIndex            : results.shift(),
+              ipv6IfDescr            : results.shift(),
+              ipv6IfLowerLayer       : results.shift(),
+              ipv6IfEffectiveMtu     : results.shift(),
+              ipv6IfReasmMaxSize     : results.shift(),
+              ipv6IfIdentifier       : results.shift(),
+              ipv6IfIdentifierLength : results.shift(),
+              ipv6IfPhysicalAddress  : results.shift(),
+              ipv6IfAdminStatus      : results.shift(),
+              ipv6IfOperStatus       : results.shift(),
+              ipv6IfLastChange       : results.shift()
+            };
+
+          return result;
+        });
+  }
+  
+  async getIpv6IfStatsTable()
+  {
+    return Promise.resolve()
+      .then(() => addIfIndexes())
+      .then((ifNames) =>
+        {
+          return Promise.all(
+            ifNames.map((ifName) =>
+              this.getIpv6IfStatsEntry(ifName, ifIndexMap[ifName])));
+        });
+  }
+
+  async getIpv6IfStatsEntry(ifName, index)
+  {
+    return Promise.resolve()
+      .then(() => getNetSnmpInfo6(ifName))
+      .then(
+        (info) =>
+        {
+          info.ipv6IfIndex = index; // Status augments ipv6IfEntry. Add index.
+          return info;
+        });
+  }
 }
 
 /* Flag bits for the `flags` field returned in `getIpRouteTable` entries */
@@ -2529,6 +2911,42 @@ async function getUdpListeners4(bResolve)
           .then(() => listeners);
       });
 }
+
+
+/*
+ * Retrieve all information available from /proc/net/snmp6
+ */
+async function getNetSnmpInfo6(ifName)
+{
+  let             result = {};
+
+  return Promise.resolve()
+    .then(() => fsp.readFile(`/proc/net/dev_snmp6/${ifName}`))
+    .then((content) => content.toString().split("\n"))
+    .then(
+      (lines) =>
+      {
+        lines.forEach(
+          (line) =>
+          {
+            let             name;
+            let             value;
+
+            // An empty line signifies the end
+            line = line.trim();
+            if (line.length === 0)
+            {
+              return;
+            }
+
+            [ name, value ] = line.split(/\s+/);
+            result[name] = +value % COUNTER_WRAP_AT;
+          });
+
+        return result;
+      });
+}
+
 
 module.exports = SnmpLinuxLib;
 

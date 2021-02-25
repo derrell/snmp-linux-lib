@@ -32,12 +32,6 @@ module.exports = async function(
   // Retrieve the MIB from the provided agent
   mib = agent.getMib();
 
-  // Create the module store which additionally reads in the
-  // base modules
-  store = snmp.createModuleStore();
-  providers = store.getProvidersForModule("RFC1213-MIB");
-  mib.registerProviders(providers);
-
   // Get access to the core library that provides results returned by snmp
   linuxLib = new SnmpLinuxLib(
     sysDescr,
@@ -49,25 +43,52 @@ module.exports = async function(
     pciIdPath);
   await linuxLib.init();
 
-  // Add all of the scalar handlers that we support
-  providers.forEach(
-    (provider) =>
+  function addSupportedScalarHandlers(providers)
+  {
+    // Add all of the scalar handlers that we support
+    providers.forEach(
+      (provider) =>
+      {
+        const           linuxLibFunction = getLinuxLibFunction(provider.name);
+
+        // Ensure this is a scalar handler
+        if (provider.type != snmp.MibProviderType.Scalar)
+        {
+          return;
+        }
+
+        // Ensure there's an implemention in this library for the name
+        if (! (linuxLibFunction in linuxLib))
+        {
+          return;
+        }
+
+        // Add the handler for this dude. He's supported.
+        addScalarHandler(provider);
+      });
+  }
+
+  // Create the module store which additionally reads in the
+  // base modules
+  store = snmp.createModuleStore();
+  providers = store.getProvidersForModule("RFC1213-MIB");
+  mib.registerProviders(providers);
+  addSupportedScalarHandlers(providers);
+
+  // Load non-base modules
+  [
+    "IPV6-TC",
+    "IPV6-MIB",
+    "IPV6-ICMP-MIB",
+    "IPV6-TCP-MIB",
+    "IPV6-UDP-MIB"
+  ].forEach(
+    (module) =>
     {
-      // Ensure this is a scalar handler
-      if (provider.type != snmp.MibProviderType.Scalar)
-      {
-        return;
-      }
-
-      // Our core library supports all scalar providers in RFC1213-MIB
-      // except those whose names begin with "egp" and "snmp"
-      if (provider.name.startsWith("egp") || provider.name.startsWith("snmp"))
-      {
-        return;
-      }
-
-      // Add the handler for this dude!
-      addScalarHandler(provider);
+      store.loadFromFile(`${__dirname}/mibs/${module}.mib`);
+      providers = store.getProvidersForModule(module);
+      mib.registerProviders(providers);
+      addSupportedScalarHandlers(providers);
     });
 
   // Add the table handlers
@@ -77,6 +98,8 @@ module.exports = async function(
   addIpNetToMediaTableHandler(mib.getProvider("ipNetToMediaEntry"));
   addTcpConnTableHandler(mib.getProvider("tcpConnEntry"));
   addUdpTableHandler(mib.getProvider("udpEntry"));
+  addIpv6IfTableHandler(mib.getProvider("ipv6IfEntry"));
+  addIpv6IfStatsTableHandler(mib.getProvider("ipv6IfStatsEntry"));
 };
 
 /*
@@ -351,6 +374,86 @@ async function addUdpTableHandler(provider)
 
           row.push(entry.udpLocalAddress);
           row.push(entry.udpLocalPort);
+
+          mib.addTableRow(provider.name, row);
+        });
+    });
+}
+
+/*
+ * Add a handler for ipv6IfTable
+ */
+function addIpv6IfTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
+    {
+      const           entries = await linuxLib.getIpv6IfTable();
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.ipv6IfIndex);
+          row.push(entry.ipv6IfDescr);
+          row.push(entry.ipv6IfLowerLayer);
+          row.push(entry.ipv6IfEffectiveMtu);
+          row.push(entry.ipv6IfReasmMaxSize);
+          row.push(entry.ipv6IfIdentifier);
+          row.push(entry.ipv6IfIdentifierLength);
+          row.push(entry.ipv6IfPhysicalAddress);
+          row.push(entry.ipv6IfAdminStatus);
+          row.push(entry.ipv6IfOperStatus);
+          row.push(entry.ipv6IfLastChange);
+
+          mib.addTableRow(provider.name, row);
+        });
+    });
+}
+
+/*
+ * Add a handler for ipv6IfStatsTable
+ */
+function addIpv6IfStatsTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
+    {
+      const           entries = await linuxLib.getIpv6IfStatsTable();
+
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          // Ipv6IfStatsTable augments Ipv6IfTable. We therefore need
+          // to prepend the index of the corresponding Ipv6IfTable
+          // entry
+          row.push(entry.ipv6IfIndex);
+
+          // Now add the members of this table entry
+          row.push(entry.Ip6InReceives);
+          row.push(entry.Ip6InHdrErrors);
+          row.push(entry.Ip6InTooBigErrors);
+          row.push(entry.Ip6InNoRoutes);
+          row.push(entry.Ip6InAddrErrors);
+          row.push(entry.Ip6InUnknownProtos);
+          row.push(entry.Ip6InTruncatedPkts);
+          row.push(entry.Ip6InDiscards);
+          row.push(entry.Ip6InDelivers);
+          row.push(entry.Ip6OutForwDatagrams);
+          row.push(entry.Ip6OutRequests);
+          row.push(entry.Ip6OutDiscards);
+          row.push(entry.Ip6FragOKs);
+          row.push(entry.Ip6FragFails);
+          row.push(entry.Ip6FragCreates);
+          row.push(entry.Ip6ReasmReqds);
+          row.push(entry.Ip6ReasmOKs);
+          row.push(entry.Ip6ReasmFails);
+          row.push(entry.Ip6InMcastPkts);
+          row.push(entry.Ip6OutMcastPkts);
 
           mib.addTableRow(provider.name, row);
         });
