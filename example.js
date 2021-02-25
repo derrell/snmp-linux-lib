@@ -40,6 +40,8 @@ async function startAgent()
         console.error(error);
         return;
       }
+
+//      console.log("Agent: " + JSON.stringify(data.pdu.varbinds, null, "  "));
     });
   authorizer = agent.getAuthorizer();
   authorizer.addCommunity("public");
