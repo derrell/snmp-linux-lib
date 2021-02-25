@@ -51,6 +51,43 @@ class SnmpLinuxLib
     this.cache.sysServices = sysServices;
   }
 
+  /*
+   * **********************************************************************
+   * Setters for the cached, user-provided settings
+   * **********************************************************************
+   */
+
+  setSysDescr(sysDescr)
+  {
+    this.cache.sysDescr = sysDescr;
+  }
+
+  setSysObjectId(sysObjectId)
+  {
+    this.cache.sysObjectId = sysObjectId;
+  }
+
+  setSysContact(sysContact)
+  {
+    this.cache.sysContact = sysContact;
+  }
+
+  setSysName(sysName)
+  {
+    this.cache.sysName = sysName;
+  }
+
+  setSysLocation(sysLocation)
+  {
+    this.cache.sysLocation = sysLocation;
+  }
+
+  setSysServices(sysServices)
+  {
+    this.cache.sysServices = sysServices;
+  }
+
+
   /**
    * Waiting on init() to complete allows parsing the PCI ID database only
    * once.
