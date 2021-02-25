@@ -100,6 +100,7 @@ module.exports = async function(
   addUdpTableHandler(mib.getProvider("udpEntry"));
   addIpv6IfTableHandler(mib.getProvider("ipv6IfEntry"));
   addIpv6IfStatsTableHandler(mib.getProvider("ipv6IfStatsEntry"));
+  addIpv6AddrTableHandler(mib.getProvider("ipv6AddrEntry"));
 };
 
 /*
@@ -454,6 +455,39 @@ function addIpv6IfStatsTableHandler(provider)
           row.push(entry.Ip6ReasmFails);
           row.push(entry.Ip6InMcastPkts);
           row.push(entry.Ip6OutMcastPkts);
+
+          mib.addTableRow(provider.name, row);
+        });
+    });
+}
+
+/*
+ * Add a handler for ipv6AddrTable
+ */
+function addIpv6AddrTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
+    {
+      const           entries = await linuxLib.getIpv6AddrTable();
+
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          // Ipv6AddrTable uses the index of Ipv6IfTable. We therefore
+          // need to prepend the index of the corresponding
+          // Ipv6IfTable entry
+          row.push(entry.ipv6IfIndex);
+
+          // Now add the members of this table entry
+          row.push(entry.ipv6AddrAddress);
+          row.push(entry.ipv6AddrPfxLength);
+          row.push(entry.ipv6AddrType);
+          row.push(entry.ipv6AddrAnycastFlag);
+          row.push(entry.ipv6AddrStatus);
 
           mib.addTableRow(provider.name, row);
         });
