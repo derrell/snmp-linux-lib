@@ -2128,6 +2128,14 @@ class SnmpLinuxLib
   }
 
   /*
+   * **********************************************************************
+   *
+   * the IPv6 Interfaces table
+   *
+   * **********************************************************************
+   */
+
+  /*
    * The IPv6 Interfaces table contains information on the entity's
    * internetwork-layer interfaces. An IPv6 interface constitutes a logical
    * network layer attachment to the layer immediately below
@@ -2431,6 +2439,13 @@ class SnmpLinuxLib
         });
   }
   
+  /*
+   * **********************************************************************
+   *
+   * IPv6 Interface Statistics table
+   *
+   * **********************************************************************
+   */
   async getIpv6IfStatsTable()
   {
     return Promise.resolve()
@@ -2454,7 +2469,176 @@ class SnmpLinuxLib
           return info;
         });
   }
+
+  /*
+   * **********************************************************************
+   *
+   * Address Prefix table
+   *
+   * The IPv6 Address Prefix table contains information on
+   * the entity's IPv6 Address Prefixes that are associated
+   * with IPv6 interfaces.
+   *
+   * **********************************************************************
+   *
+   * TODL: THIS TABLE IS NOT IMPLEMENTED
+   *
+   *   getIpv6AddrPrefixTable
+   *   getIpv6AddrPrefixEntry
+   */
+
+  async getIpv6AddrTable()
+  {
+    const           addressInfo = await getAddressInfo();
+    const           byIpAddr = addressInfo.byIpAddr;
+
+    return Promise.resolve()
+      .then(
+        () =>
+        {
+          let             ipAddr;
+          let             promises = [];
+
+          // Call `getIpv6AddrEntry` for each IPv6 address, binding the
+          // just-retrieved addressInfo so that `getIpAddrEntry` need
+          // not re-retrieve it.
+          for (ipAddr in byIpAddr.IPv6)
+          {
+            promises.push(this.getIpv6AddrEntry.bind(addressInfo)(ipAddr));
+          }
+
+          return Promise.all(promises);
+        });
+  }
+
+  async getIpv6AddrEntry(ipAddr)
+  {
+    let             entry;
+    let             addressInfo;
+
+    // If we were called externally, `this` will be our class. If we
+    // were called from `getIpAddrTable`, above, `this` will be the
+    // already-ascertained address information. If the address info is
+    // already available, we save ourselves a library call for each
+    // entry.
+    if (this instanceof SnmpLinuxLib)
+    {
+      addressInfo = await getAddressInfo();
+    }
+    else
+    {
+      addressInfo = this; // already have addressInfo from getIpAddrTable
+    }
+
+    // Get the information about this address
+    entry = addressInfo.byIpAddr.IPv6[ipAddr];
+
+    /*
+     * The index value which uniquely identifies the interface to which this
+     * entry is applicable. The interface identified by a particular value of
+     * this index is the same interface as identified by the same value of
+     * ifIndex.
+     */
+    let             ipv6IfIndex = async () =>
+    {
+      return Promise.resolve()
+        .then(() => addIfIndexes())
+        .then(() =>
+          {
+            // It'd better be there now
+            if (! (entry.interface in ifIndexMap))
+            {
+              throw new Error(`Interface ${entry.interface} does not exist`);
+            }
+
+            return ifIndexMap[entry.interface];
+          });
+    };
+
+    /*
+     * The IPv6 address to which this entry's addressing information
+     * pertains.
+     */
+    let             ipv6AddrAddress = async () =>
+    {
+      return ipAddr;
+    };
+
+    /*
+     * The length of the prefix (in bits) associated with the IPv6 address of
+     * this entry.
+     */
+    let             ipv6AddrPfxLength = async () =>
+    {
+      return +entry.cidr.split("/")[1];
+    };
+
+    /*
+     * The type of address. Note that 'stateless(1)' refers to an address that
+     * was statelessly autoconfigured; 'stateful(2)' refers to a address which
+     * was acquired by via a stateful protocol (e.g. DHCPv6, manual
+     * configuration).
+     */
+    let             ipv6AddrType = async () =>
+    {
+      return 3;                 // 1=stateless 2=stateful 3=unknown
+    };
+
+    /*
+     * This object has the value 'true(1)', if this address is an anycast
+     * address and the value 'false(2)' otherwise.
+     */
+    let             ipv6AddrAnycastFlag = async () =>
+    {
+      return 2;                 // 1=true, 2=false
+    };
+
+    /*
+     * Address status. The preferred(1) state indicates that this is a valid
+     * address that can appear as the destination or source address of a
+     * packet. The deprecated(2) state indicates that this is a valid but
+     * deprecated address that should no longer be used as a source address in
+     * new communications, but packets addressed to such an address are
+     * processed as expected. The invalid(3) state indicates that this is not
+     * valid address which should not appear as the destination or source
+     * address of a packet. The inaccessible(4) state indicates that the
+     * address is not accessible because the interface to which this address
+     * is assigned is not operational.
+     */
+    let             ipv6AddrStatus = async () =>
+    {
+      return 5; // 1=preferred 2=deprecated 3=invalid 4=inaccessible 5=unknown
+    };
+
+    return Promise.all(
+      [
+        ipv6IfIndex(),
+        ipv6AddrAddress(),
+        ipv6AddrPfxLength(),
+        ipv6AddrType(),
+        ipv6AddrAnycastFlag(),
+        ipv6AddrStatus()
+      ])
+      .then((results) =>
+        {
+          let result =
+            {
+              ipv6IfIndex         : results.shift(),
+              ipv6AddrAddress     : results.shift(),
+              ipv6AddrPfxLength   : results.shift(),
+              ipv6AddrType        : results.shift(),
+              ipv6AddrAnycastFlag : results.shift(),
+              ipv6AddrStatus      : results.shift()
+            };
+
+          return result;
+        });
+  }
 }
+
+
+
+
 
 /* Flag bits for the `flags` field returned in `getIpRouteTable` entries */
 const IpRouteTable_FLAGS =
