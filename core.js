@@ -18,6 +18,8 @@
 let             pciIds;          // PCI ID database parsed into a map
 let             ifIndexMap = {}; // keyed by interface name
 let             nextIfIndex = 1; // unique value in ifIndexMap
+let             ipv6RouteMap = {};
+let             nextIpv6RouteIndex = 1;
 const           fsp = require("fs").promises;
 const           COUNTER_WRAP_AT = 0x100000000; // wrap Counter types at 32 bits
 const           GAUGE_MAX = 0xffffffff;        // clamp Guage at 32 bit max int
@@ -1283,13 +1285,7 @@ class SnmpLinuxLib
    */
   async getIpRouteTable()
   {
-    return Promise.resolve()
-      .then(() => getRouteInfo4())
-      .then(
-        (routeInfo) =>
-        {
-          return routeInfo;
-        });
+    return getRouteInfo4();
   }
 
   /*
@@ -1371,7 +1367,7 @@ class SnmpLinuxLib
      */
     let             ipNetToMediaPhysAddress = async () =>
     {
-      return hwAddr;
+      return hexToBinaryHwAddr(hwAddr);
     };
 
     /*
@@ -2281,9 +2277,15 @@ class SnmpLinuxLib
      */
     let             ipv6IfEffectiveMtu  = async () =>
     {
+      let             mtu;
+
+      // The mtu file doesn't exist for all interfaces. Assume ethernet.
       return Promise.resolve()
         .then(() => fsp.readFile(`/proc/sys/net/ipv6/conf/${ifName}/mtu`))
-        .then(v => +v.toString().trim());
+        .then(v => +v.toString().trim())
+        .then(v => mtu = v)
+        .catch((e) => mtu = 1500)
+        .then(() => mtu);
     };
 
     /*
@@ -2481,12 +2483,16 @@ class SnmpLinuxLib
    *
    * **********************************************************************
    *
-   * TODL: THIS TABLE IS NOT IMPLEMENTED
+   * TODO: THIS TABLE IS NOT IMPLEMENTED
    *
    *   getIpv6AddrPrefixTable
    *   getIpv6AddrPrefixEntry
    */
 
+  /*
+   * The table of addressing information relevant to this node's interface
+   * addresses.
+   */
   async getIpv6AddrTable()
   {
     const           addressInfo = await getAddressInfo();
@@ -2511,6 +2517,9 @@ class SnmpLinuxLib
         });
   }
 
+  /*
+   * The addressing information for one of this node's interface addresses.
+   */
   async getIpv6AddrEntry(ipAddr)
   {
     let             entry;
@@ -2561,7 +2570,7 @@ class SnmpLinuxLib
      */
     let             ipv6AddrAddress = async () =>
     {
-      return ipAddr;
+      return hexToIp6(ipAddr);
     };
 
     /*
@@ -2629,6 +2638,206 @@ class SnmpLinuxLib
               ipv6AddrType        : results.shift(),
               ipv6AddrAnycastFlag : results.shift(),
               ipv6AddrStatus      : results.shift()
+            };
+
+          return result;
+        });
+  }
+
+  /*
+   * The number of current ipv6RouteTable entries. This is primarily to avoid
+   * having to read the table in order to determine this number.
+   */
+  async getIpv6RouteNumber()
+  {
+    return Promise.resolve()
+      .then(() => getRouteInfo6())
+      .then(routeInfo => routeInfo.length);
+  }
+
+  /*
+   * The number of routing entries which were chosen to be discarded even
+   *  though they are valid. One possible reason for discarding such an entry
+   *  could be to free-up buffer space for other routing entries.
+   */
+  async getIpv6DiscardedRoutes()
+  {
+    return 0;                   // TODO: is this available on Linux?
+  }
+
+  /*
+   * IPv6 Routing table. This table contains an entry for each valid IPv6
+   * unicast route that can be used for packet forwarding determination.
+   */
+  async getIpv6RouteTable()
+  {
+    return getRouteInfo6();
+  }
+
+  /*
+   * The IP Address Translation table used for mapping from IP addresses to
+   * physical addresses.
+   */
+  async getIpv6NetToMediaTable()
+  {
+    const           addressInfo = await getAddressInfo();
+    const           byHwAddr = addressInfo.byHwAddr;
+
+    return Promise.resolve()
+      .then(
+        () =>
+        {
+          let             hwAddr;
+          let             promises = [];
+
+          // Call `getIpv6NetToMediaEntry` for each hardware address,
+          // binding the just-retrieved addressInfo so that
+          // `getIpAddrEntry` need not re-retrieve it.
+          for (hwAddr in byHwAddr.IPv6)
+          {
+            promises.push(
+              this.getIpv6NetToMediaEntry.bind(addressInfo)(hwAddr));
+          }
+
+          return Promise.all(promises);
+        });
+  }
+
+  /*
+   * Each entry contains one IpAddress to `physical' address equivalence.
+   */
+  async getIpv6NetToMediaEntry(hwAddr)
+  {
+    let             entry;
+    let             addressInfo;
+
+    // If we were called externally, `this` will be our class. If we
+    // were called from `getIpNetToMediaTable`, above, `this` will be the
+    // already-ascertained address information. If the address info is
+    // already available, we save ourselves a library call for each
+    // entry.
+    if (this instanceof SnmpLinuxLib)
+    {
+      addressInfo = await getAddressInfo();
+    }
+    else
+    {
+      addressInfo = this; // already have addressInfo from getIpNetToMediaTable
+    }
+
+    // Get the information about this address
+    entry = addressInfo.byHwAddr.IPv6[hwAddr];
+
+    /*
+     * The interface on which this entry's equivalence is effective. The
+     * interface identified by a particular value of this index is the same
+     * interface as identified by the same value of ifIndex.
+     */
+    let             ipv6IfIndex = async () =>
+    {
+      return Promise.resolve()
+        .then(() => addIfIndexes())
+        .then(() =>
+          {
+            // It'd better be there now
+            if (! (entry.interface in ifIndexMap))
+            {
+              throw new Error(`Interface ${entry.interface} does not exist`);
+            }
+
+            return ifIndexMap[entry.interface];
+          });
+    };
+
+    /*
+     * The IPv6 Address corresponding to the media-dependent `physical'
+     * address.
+     *
+     */
+    let             ipv6NetToMediaNetAddress = async () =>
+    {
+      return hexToIp6(entry.address);
+    };
+
+    /*
+     * The media-dependent `physical' address.
+     */
+    let             ipv6NetToMediaPhysAddress = async () =>
+    {
+      return hexToBinaryHwAddr(hwAddr);
+    };
+
+    /*
+     * The type of the mapping. The 'dynamic(2)' type indicates that the IPv6
+     * address to physical addresses mapping has been dynamically resolved
+     * using the IPv6 Neighbor Discovery protocol. The static(3)' types
+     * indicates that the mapping has been statically configured. The local(4)
+     * indicates that the mapping is provided for an entity's own interface
+     * address.
+     */
+    let             ipv6NetToMediaType = async () =>
+    {
+      // TODO: How do we determine this generically?
+      return 1;                 // 1=other 2=invalid 3=dynamic 4=static
+    };
+
+    /*
+     * The Neighbor Unreachability Detection [8] state for the interface when
+     * the address mapping in this entry is used.
+     */
+    let             ipv6NetToMediaState = async () =>
+    {
+      // TODO: How do we determine this generically?
+      return 6;                 // 6=unknown
+    };
+    
+    /*
+     * The value of sysUpTime at the time this entry was last updated. If this
+     * entry was updated prior to the last re-initialization of the local
+     * network management subsystem, then this object contains a zero value.
+     */
+    let             ipv6NetToMediaLastUpdated = async () =>
+    {
+      return 0;
+    };
+
+    /*
+     * Setting this object to the value 'false(2)' has the effect of
+     * invalidating the corresponding entry in the ipv6NetToMediaTable. That
+     * is, it effectively disassociates the interface identified with said
+     * entry from the mapping identified with said entry. It is an
+     * implementation-specific matter as to whether the agent removes an
+     * invalidated entry from the table. Accordingly, management stations must
+     * be prepared to receive tabular information from agents that corresponds
+     * to entries not currently in use. Proper interpretation of such entries
+     * requires examination of the relevant ipv6NetToMediaValid object.
+     */
+    let             ipv6NetToMediaValid = async () =>
+    {
+      return 1;                 // 1=true 2=false
+    };
+
+    return Promise.all(
+      [
+        ipv6IfIndex(),
+        ipv6NetToMediaNetAddress(),
+        ipv6NetToMediaPhysAddress(),
+        ipv6NetToMediaType(),
+        ipv6NetToMediaState(),
+        ipv6NetToMediaLastUpdated(),
+        ipv6NetToMediaValid()
+      ])
+      .then((results) =>
+        {
+          let result =
+            {
+              ipv6IfIndex               : results.shift(),
+              ipv6NetToMediaNetAddress  : results.shift(),
+              ipv6NetToMediaPhysAddress : results.shift(),
+              ipv6NetToMediaType        : results.shift(),
+              ipv6NetToMediaState       : results.shift(),
+              ipv6NetToMediaLastUpdated : results.shift(),
+              ipv6NetToMediaValid       : results.shift()
             };
 
           return result;
@@ -2824,6 +3033,21 @@ async function getAddressInfo()
   ret = { networkInterfaces, byIpAddr, byHwAddr };
   return ret;
 }
+
+
+/*
+ * Map a length-17 string representation of a mac address, e.g.,
+ * "00:11:22:33:44:55", to a string of six 8-bit values.
+ */
+function hexToBinaryHwAddr(s)
+{
+  // Get an array of strings by splitting at every 2 characters, and
+  // then parse each pair of hex characters into an integer. Finally
+  // combine those 8-bit numbers back into a string, assuming each
+  // 8-bit number is the byte value
+  return Buffer.from(s.split(":").map(v => parseInt(v, 16)));
+}
+
 
 /**
  * Convert a hex IPv4 address, which is in reverse order, into its
@@ -3167,6 +3391,117 @@ async function getNetSnmpInfo6(ifName)
         return result;
       });
 }
+
+
+/*
+ * Map a length-32 string IPv6 address (without colons) to a length-16
+ * string of 8-bit values.
+ */
+function hexToIp6(s)
+{
+  // Get an array of strings by splitting at every 2 characters, and
+  // then parse each pair of hex characters into an integer. Finally
+  // combine those 8-bit numbers back into a string, assuming each
+  // 8-bit number is the byte value
+  return String.fromCharCode.apply(
+    null,
+    s.match(/.{2}/g).map(v => parseInt(v, 16)));
+}
+
+
+/**
+ * Get information about all IPv6 routes
+ */
+async function getRouteInfo6()
+{
+  let             key;
+  let             routes = [];
+
+  return Promise.resolve()
+    .then(() => addIfIndexes())
+    .then(() => fsp.readFile("/proc/net/ipv6_route"))
+    .then((content) => content.toString().split("\n"))
+    .then(
+      (lines) =>
+      {
+        lines.forEach(
+          (line, i) =>
+          {
+            let             entry;
+            let             fields;
+            let             routeIndex;
+
+            // If the line is empty, e.g., last line, we have nothing to do
+            if (line.length === 0)
+            {
+              return;
+            }
+
+            // Keep track of a unique integer that identifies this
+            // route for the lifetime of the route
+            if (ipv6RouteMap[line])
+            {
+              routeIndex = ipv6RouteMap[line].routeIndex;
+            }
+            else
+            {
+              routeIndex = nextIpv6RouteIndex++;
+              ipv6RouteMap[line] = { routeIndex };
+            }
+
+            // Mark route as seen this time, allowing pruning deleted routes
+            ipv6RouteMap[line].bSeen = true;
+
+            // Split the line on whitespace
+            fields = line.split(/\s+/g);
+
+            // Add a route entry with the fields identified
+            entry =
+              {
+                routeIndex    : routeIndex,
+                destNetwork   : hexToIp6(fields.shift()),
+                destPrefix    : parseInt(fields.shift(), 16),
+                sourceNetwork : hexToIp6(fields.shift()),
+                sourcePrefix  : parseInt(fields.shift(), 16),
+                nextHop       : hexToIp6(fields.shift()),
+                metric        : parseInt(fields.shift(), 16),
+                refcount      : parseInt(fields.shift(), 16),
+                usecount      : parseInt(fields.shift(), 16),
+                flags         : parseInt(fields.shift(), 16),
+                interface     : fields.shift()
+              };
+
+            // Determine the interface index from the interface name
+            entry.interfaceIndex = ifIndexMap[entry.interface];
+
+            // Delete irrelevant/unused fields
+            delete entry.refcount;
+            delete entry.use;
+
+            // Add this entry to the results
+            routes.push(entry);
+          });
+
+        // Prune obsolete routes from our route map
+        for (key in ipv6RouteMap)
+        {
+          // If we didn't see this route this time...
+          if (! ipv6RouteMap[key].bSeen)
+          {
+            // ... then delete it
+            delete ipv6RouteMap[key];
+          }
+          else
+          {
+            // Otherwise, just delete the seen flag
+            delete ipv6RouteMap[key].bSeen;
+          }
+        }
+
+        return routes;
+      });
+}
+
 
 
 module.exports = SnmpLinuxLib;
