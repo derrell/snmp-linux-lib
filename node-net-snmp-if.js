@@ -101,6 +101,8 @@ module.exports = async function(
   addIpv6IfTableHandler(mib.getProvider("ipv6IfEntry"));
   addIpv6IfStatsTableHandler(mib.getProvider("ipv6IfStatsEntry"));
   addIpv6AddrTableHandler(mib.getProvider("ipv6AddrEntry"));
+  addIpv6RouteTableHandler(mib.getProvider("ipv6RouteEntry"));
+  addIpv6NetToMediaTableHandler(mib.getProvider("ipv6NetToMediaEntry"));
 };
 
 /*
@@ -493,3 +495,67 @@ function addIpv6AddrTableHandler(provider)
         });
     });
 }
+
+/*
+ * Add a handler for ipRouteTable
+ */
+function addIpv6RouteTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
+    {
+      const           entries = await linuxLib.getIpv6RouteTable();
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.destNetwork);    // ipv6RouteDest
+          row.push(entry.destPrefix);     // ipv6RoutePfxLength
+          row.push(entry.routeIndex);     // ipv6RouteIndex
+          row.push(entry.interfaceIndex); // ipv6RouteIfIndex
+          row.push(entry.nextHop);        // ipv6RouteNextHop
+          row.push(1);                    // ipv6RouteType 1=other
+          row.push(1);                    // ipv6RouteProtocol 1=other
+          row.push(0xffff);               // ipvtRoutePolicy
+          row.push(0);                    // ipv6RouteAge
+          row.push(0);                    // ipv6RouteNextHopRDI
+          row.push(entry.metric);         // ipv6RouteMetric
+          row.push(entry.metric);         // ipv6RouteWeight
+          row.push("0.0");                // ipv6RouteInfo
+          row.push(1);                    // ipv6RouteValid 1=true 2=false
+
+          mib.addTableRow(provider.name, row);
+        });
+    });
+}
+
+/*
+ * Add a handler for ipv6NetToMediaTable
+ */
+function addIpv6NetToMediaTableHandler(provider)
+{
+  _addTableHandler(
+    provider,
+    async () =>
+    {
+      const           entries = await linuxLib.getIpv6NetToMediaTable();
+      entries.forEach(
+        (entry) =>
+        {
+          let             row = [];
+
+          row.push(entry.ipv6IfIndex);
+          row.push(entry.ipv6NetToMediaNetAddress);
+          row.push(entry.ipv6NetToMediaPhysAddress);
+          row.push(entry.ipv6NetToMediaType);
+          row.push(entry.ipv6NetToMediaState);
+          row.push(entry.ipv6NetToMediaLastUpdated);
+          row.push(entry.ipv6NetToMediaValid);
+
+          mib.addTableRow(provider.name, row);
+        });
+    });
+}
+
