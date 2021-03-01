@@ -3394,18 +3394,27 @@ async function getNetSnmpInfo6(ifName)
 
 
 /*
- * Map a length-32 string IPv6 address (without colons) to a length-16
- * string of 8-bit values.
+ * Map a length-32 string IPv6 address (without colons) or a standard
+ * IPv6 address (with colons) to a length-16 string of 8-bit values.
  */
 function hexToIp6(s)
 {
+  // If there are colons in the address, normalize it first
+  if (s.includes(":"))
+  {
+    s = require("ip6").normalize(s);
+  }
+
   // Get an array of strings by splitting at every 2 characters, and
   // then parse each pair of hex characters into an integer. Finally
   // combine those 8-bit numbers back into a string, assuming each
-  // 8-bit number is the byte value
-  return String.fromCharCode.apply(
-    null,
-    s.match(/.{2}/g).map(v => parseInt(v, 16)));
+  // 8-bit number is the byte value, and convert to Buffer.
+  return (
+    Buffer.from(
+      s
+        .replace(/:/g, "")
+        .match(/.{2}/g)
+        .map(v => parseInt(v, 16))));
 }
 
 
