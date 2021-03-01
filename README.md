@@ -4,8 +4,8 @@ Dynamic MIB support for Linux computers, etc.
 This package provides an add-on to a
 [node-net-snmp](https://github.com/markabrahams/node-net-snmp/) SNMP
 agent, that implements most of RFC1213-MIB's defined IPv4 OIDs, and
-most of IPV6-MIB's IPV6 OIDs. It obtains the information (mostly) from
-/proc and /sys information on a Linux system.
+most of IPV6-MIB's IPV6 OIDs. It obtains the information from /proc
+and /sys information on a Linux system.
 
 The system interface is implemented in `core.js`. Those facilities are then made available as SNMP objects by `node-net-snmp-if.js`.
 
