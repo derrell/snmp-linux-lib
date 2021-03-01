@@ -22,3 +22,6 @@ Then, to display all information:
 ```
 snmpwalk -v2c -c public localhost:1611 1.3.6.1.2.1
 ```
+
+(Writing to the read-write objects has no practical effect. This
+package is focused on reading, not writing, at this time.)
