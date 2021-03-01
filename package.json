@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/derrell/snmp-linux-lib#readme",
   "dependencies": {
-    "net-snmp": "^3.4.3"
+    "ip6": "^0.2.1",
+    "net-snmp": "^3.5.1"
   }
 }
