@@ -770,7 +770,7 @@ ipv6IfLastChange OBJECT-TYPE
     ::= { ipv6AddrEntry 1 }
 
  ipv6AddrPfxLength OBJECT-TYPE
-    SYNTAX      INTEGER (0..128)
+    SYNTAX      INTEGER(0..128)
     UNITS       "bits"
     MAX-ACCESS  read-only
     STATUS      current
